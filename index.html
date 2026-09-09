@@ -390,8 +390,9 @@ button { font-family: inherit; }
 
 /* ===== 信息窗（标记弹窗）===== */
 .iw { width: 320px; font-size: 13px; }
+.iw-head { display: flex; align-items: center; gap: 6px; }
 .iw-head input.iw-name {
-  width: 100%; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px;
+  flex: 1; min-width: 0; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px;
   font-size: 15px; font-weight: 600; outline: none; background: transparent;
 }
 .iw-head input.iw-name:hover, .iw-head input.iw-name:focus { border-color: #dcdfe4; background: #fff; }
@@ -447,7 +448,7 @@ button { font-family: inherit; }
 .iw-go:hover { background: #1560e0; }
 .iw-ok { flex: 1; background: #f4f5f7; color: #333; }
 .iw-ok:hover { background: #e5e6eb; }
-.iw-delcus { flex: 1; background: #fff; color: #d83931; border-color: #f3c2bf !important; }
+.iw-delcus { flex: none; white-space: nowrap; background: #fff; color: #d83931; border: 1px solid #f3c2bf; border-radius: 6px; font-size: 12px; padding: 6px 10px; cursor: pointer; }
 .iw-delcus:hover { background: #fdeceb; }
 .iw-close { flex: 1; background: #f4f5f7; color: #333; }
 .iw-close:hover { background: #e8eaee; }
@@ -1874,7 +1875,8 @@ button { font-family: inherit; }
         '<button data-role="vadd" type="button">记录</button>' +
       '</div>';
     return '<div class="iw">' +
-      '<div class="iw-head"><input class="iw-name" data-role="name" value="' + esc(customerDisplayName(c)) + '" placeholder="客户名称" maxlength="30"></div>' +
+      '<div class="iw-head"><input class="iw-name" data-role="name" value="' + esc(customerDisplayName(c)) + '" placeholder="客户名称" maxlength="30">' +
+        '<button class="iw-delcus" data-role="delcus" type="button" title="删除该客户">删除客户</button></div>' +
       posList +
       '<div class="iw-tags">' +
         '<span class="iw-tags-label">标签</span>' +
@@ -1892,7 +1894,6 @@ button { font-family: inherit; }
         (telHref ? '<button class="iw-call" data-role="call" type="button">📞 拨打</button>' : '') +
         '<button class="iw-go" data-role="go" type="button">到这里</button>' +
         '<button class="iw-nav" data-role="nav" type="button">手机导航</button>' +
-        '<button class="iw-delcus" data-role="delcus" type="button">删除客户</button>' +
         '<button class="iw-ok" data-role="ok" type="button">确定</button>' +
         '<button class="iw-close" data-role="close" type="button">关闭</button>' +
       '</div>' +
