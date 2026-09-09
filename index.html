@@ -345,6 +345,9 @@ button { font-family: inherit; }
 /* 从设置弹窗内打开的回收站窗口需要盖在设置之上；确认弹窗永远在最上层 */
 #trash-mask { z-index: 2100; }
 #confirm-mask { z-index: 3000; }
+#install-guide { z-index: 3100; }
+/* 已作为应用安装运行时（PWA 独立窗口）不再显示「添加到桌面」按钮 */
+@media (display-mode: standalone) { #btn-install-app { display: none !important; } }
 .modal {
   width: 440px; max-width: 94vw; background: #fff; border-radius: 14px;
   padding: 22px 24px; box-shadow: 0 12px 44px rgba(0,0,0,.22);
@@ -531,6 +534,10 @@ button { font-family: inherit; }
     <button id="btn-settings" class="btn" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
       <span class="label">设置</span>
+    </button>
+    <button id="btn-install-app" class="btn" type="button" title="添加到桌面：生成应用图标，像 App 一样全屏使用">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      <span class="label">添加到桌面</span>
     </button>
   </div>
 </header>
@@ -785,6 +792,17 @@ button { font-family: inherit; }
   </div>
 </div>
 
+<!-- 添加到桌面引导弹窗（浏览器不支持自动安装时提示手动添加） -->
+<div id="install-guide" class="mask hidden">
+  <div class="modal">
+    <h3>添加到桌面</h3>
+    <p class="tip" id="install-guide-text" style="margin:12px 0 2px; line-height:1.8;"></p>
+    <div class="modal-actions">
+      <button id="btn-install-guide-ok" class="btn primary" type="button">知道了</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -882,6 +900,16 @@ button { font-family: inherit; }
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
+  }
+
+  /* 添加到桌面引导：浏览器不支持自动安装（如 iOS Safari / 部分安卓浏览器）时，
+     提示用户按系统菜单手动添加到主屏幕 */
+  function showInstallGuide() {
+    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    $('install-guide-text').textContent = isIOS
+      ? '请点击浏览器底部的「分享」按钮，选择「添加到主屏幕」，即可在手机桌面生成应用图标。'
+      : '请点击浏览器右上角（或底部）菜单按钮，找到「添加到主屏幕 / 添加到桌面 / 安装应用」，即可在手机桌面生成应用图标。';
+    $('install-guide').classList.remove('hidden');
   }
 
   /* 居中确认弹窗：替换浏览器原生 confirm（原生弹窗固定在浏览器顶部，无法控制位置） */
@@ -3121,6 +3149,28 @@ button { font-family: inherit; }
     });
     $('btn-stats').addEventListener('click', openStats);
     $('btn-stats-close').addEventListener('click', closeStats);
+    /* 添加到桌面（PWA 安装）：支持自动安装的浏览器直接弹系统安装框，其余弹手动引导 */
+    var deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+    });
+    $('btn-install-app').addEventListener('click', function () {
+      if (deferredPrompt) {
+        var p = deferredPrompt;
+        deferredPrompt = null;
+        p.prompt();
+        p.userChoice.then(function () {});
+        return;
+      }
+      showInstallGuide();
+    });
+    $('btn-install-guide-ok').addEventListener('click', function () {
+      $('install-guide').classList.add('hidden');
+    });
+    $('install-guide').addEventListener('click', function (e) {
+      if (e.target === this) this.classList.add('hidden');
+    });
     $('btn-plan-multi').addEventListener('click', planMultiRoute);
     /* 客户列表面板内的导入 / 导出（Excel，支持 .xlsx/.csv/.json） */
     $('btn-cust-export').addEventListener('click', exportExcel);
