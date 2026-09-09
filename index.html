@@ -286,6 +286,21 @@ button { font-family: inherit; }
   background: #eef4ff; color: #1E6FFF; border: 1px solid #d6e6ff;
   font-size: 10px; font-weight: 400; vertical-align: 1px;
 }
+/* 电话拨打 */
+.iw-tel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.iw-tel-link {
+  display: inline-flex; align-items: center; color: #1E6FFF; font-size: 13px;
+  font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+  padding: 4px 0; flex: 1; min-width: 0; word-break: break-all;
+}
+.iw-tel-edit {
+  border: 1px solid #d8dbe2; background: #fff; color: #5c6470;
+  border-radius: 4px; font-size: 12px; padding: 2px 7px; cursor: pointer; flex: none;
+}
+.iw-tel-input {
+  flex: 1; min-width: 0; border: 1px solid #1E6FFF; border-radius: 4px;
+  font-size: 13px; padding: 4px 6px; outline: none;
+}
 .mk-wrap { position: relative; }
 .mk-badge {
   position: absolute; top: -8px; right: -12px;
@@ -1801,6 +1816,20 @@ button { font-family: inherit; }
       return '<span class="iw-tag">' + esc(t) + '<b data-role="tagdel" data-tag="' + esc(t) + '">×</b></span>';
     }).join('');
     var fixedRows = FIXED_INFO_KEYS.map(function (k) {
+      /* 电话条目：显示为可点击拨打的号码（手机端直接调起拨号），附「✎」按钮可切换编辑 */
+      if (k === '电话') {
+        var tv = fixedInfoVal(c, k);
+        var th = tv ? tv.replace(/[^\d+\-() ]/g, '') : '';
+        return '<div class="iw-row iw-fixed" data-key="' + k + '">' +
+          '<span class="iw-key">' + k + '</span>' +
+          (tv
+            ? '<span class="iw-tel" data-val="' + esc(tv) + '">' +
+                '<a class="iw-tel-link" href="tel:' + th + '">' + esc(tv) + '</a>' +
+                '<button class="iw-tel-edit" data-role="tel-edit" type="button" title="修改电话">✎</button>' +
+              '</span>'
+            : '<input data-role="ev" placeholder="内容" value="">') +
+        '</div>';
+      }
       return '<div class="iw-row iw-fixed" data-key="' + k + '">' +
         '<span class="iw-key">' + k + '</span>' +
         '<input data-role="ev" placeholder="' + (k === '地址' ? '地址（用于定位）' : '内容') + '" value="' + esc(fixedInfoVal(c, k)) + '">' +
@@ -2052,6 +2081,30 @@ button { font-family: inherit; }
       renderCustomerList();
       refreshTags();
     });
+
+    /* 电话修改：点「✎」把号码切换为输入框，回车/失焦保存 */
+    var telEditBtn = content.querySelector('[data-role="tel-edit"]');
+    if (telEditBtn) {
+      telEditBtn.addEventListener('click', function () {
+        var box = telEditBtn.closest('.iw-tel');
+        var cur = box ? (box.getAttribute('data-val') || '') : '';
+        box.innerHTML = '<input class="iw-tel-input" data-role="tel-input" value="' + esc(cur) + '">';
+        var inp = box.querySelector('[data-role="tel-input"]');
+        inp.focus();
+        var commit = function () {
+          var v = inp.value.trim();
+          var arr = c.info || [];
+          var hit = false;
+          arr.forEach(function (it) { if (it && it.k === '电话') { it.v = v; hit = true; } });
+          if (!hit) arr.push({ k: '电话', v: v });
+          saveData();
+          renderCustomerList();
+          refreshTags();
+        };
+        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+        inp.addEventListener('blur', commit);
+      });
+    }
 
     /* 确定：信息已实时保存；若地址被修改，则用新地址重新定位——
        在新地址重新生成标记并移除旧标记 */
