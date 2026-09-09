@@ -1894,24 +1894,44 @@ button { font-family: inherit; }
     '</div>';
   }
 
-  /* 一键跳转手机导航：手机端调起高德地图 App 直接导航到客户位置，电脑端打开高德网页版导航 */
-  var navLock = false; /* 防止连续点击重复跳转导致卡顿 */
+  /* 一键跳转手机导航：手机端调起高德地图 App 直接导航到客户位置（当前页面保持不动），
+     未安装 App 时自动回退打开高德网页导航（新标签，也不离开当前页）；电脑端打开高德网页版导航 */
+  var navLock = false; /* 防止连续点击重复调起导致卡顿 */
   function openMobileNav(c) {
     if (typeof c.lng !== 'number' || typeof c.lat !== 'number') { toast('该客户尚未定位，无法导航'); return; }
     if (navLock) { return; }
     navLock = true;
     setTimeout(function () { navLock = false; }, 1500);
-    var name = encodeURIComponent(customerDisplayName(c) || '客户');
+    var dispName = customerDisplayName(c) || '客户';
     var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-    var url = 'https://uri.amap.com/navigation?to=' + c.lng + ',' + c.lat + ',' + name +
+    var webUrl = 'https://uri.amap.com/navigation?to=' + c.lng + ',' + c.lat + ',' + encodeURIComponent(dispName) +
       '&mode=car&coordinate=gaode' + (isMobile ? '&callnative=1' : '');
-    if (isMobile) {
-      /* 移动端：直接跳转调起高德 App（未安装则打开网页导航）。
-         不用 window.open——部分手机浏览器/WebView 弹新窗口会卡死或卡顿 */
-      window.location.href = url;
-    } else {
-      window.open(url, '_blank');
-    }
+    if (!isMobile) { window.open(webUrl, '_blank'); return; }
+    /* 手机端：用隐藏 iframe 调起高德 App（当前页面不会跳走，回来仍在客户信息界面）。
+       若手机未安装高德 App，iframe 无法调起，2.5 秒后自动回退为网页导航（新标签打开） */
+    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    var scheme = (isIOS ? 'iosamap://navi?' : 'androidamap://navi?') +
+      'sourceApplication=customerMap&poiname=' + encodeURIComponent(dispName) +
+      '&lat=' + c.lat + '&lon=' + c.lng + '&dev=0';
+    var ifr = document.createElement('iframe');
+    ifr.style.display = 'none';
+    ifr.src = scheme;
+    document.body.appendChild(ifr);
+    var fallbackTimer = setTimeout(function () {
+      try { document.body.removeChild(ifr); } catch (e) {}
+      window.open(webUrl, '_blank');
+    }, 2500);
+    /* App 被调起时页面会进入后台（hidden），此时取消回退计时 */
+    var visHandler = function () {
+      if (document.hidden || document.webkitHidden) {
+        clearTimeout(fallbackTimer);
+        try { document.body.removeChild(ifr); } catch (e) {}
+        document.removeEventListener('visibilitychange', visHandler);
+        window.removeEventListener('pagehide', visHandler);
+      }
+    };
+    document.addEventListener('visibilitychange', visHandler);
+    window.addEventListener('pagehide', visHandler);
   }
 
   /* 移动端点击标记时，触摸事件会同时触发「标记 click」和「地图 click」，
