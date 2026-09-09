@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- PWA：可作为 App 添加到手机主屏幕（全屏运行） -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1E6FFF">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="客户标记">
 <!-- 禁止浏览器缓存页面，保证每次打开都加载最新版本 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -917,6 +924,12 @@ button { font-family: inherit; }
   function init() {
     bindGlobalEvents();
     updateClusterBtn(); /* 菜单栏「聚合」按钮状态同步到已保存的设置 */
+    /* PWA：注册 Service Worker（支持添加到主屏幕 / 离线缓存兜底） */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
     /* 防止浏览器自动填充/表单恢复把 Key 等值塞进客户列表搜索框（会污染筛选导致列表为空）。
        自动填充可能加载后稍晚才生效，多次延时清空；用户真正输入过（keydown/paste）则不再清 */
     function guardSearchBox() {
