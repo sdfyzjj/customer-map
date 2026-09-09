@@ -301,6 +301,10 @@ button { font-family: inherit; }
   flex: 1; min-width: 0; border: 1px solid #1E6FFF; border-radius: 4px;
   font-size: 13px; padding: 4px 6px; outline: none;
 }
+.iw-call {
+  background: #1a9c4e; color: #fff; border: none; border-radius: 6px;
+  font-size: 12px; padding: 6px 10px; cursor: pointer;
+}
 .mk-wrap { position: relative; }
 .mk-badge {
   position: absolute; top: -8px; right: -12px;
@@ -1803,6 +1807,9 @@ button { font-family: inherit; }
     return '';
   }
   function buildInfoHtml(c, groupArr) {
+    /* 电话（供拨打按钮与号码链接使用） */
+    var telRaw = fixedInfoVal(c, '电话') || '';
+    var telHref = telRaw.replace(/[^\d+\-() ]/g, '');
     /* 同位置重叠客户清单：让用户一眼看到该位置的 N 个客户分别是谁（点击名字可切换查看） */
     var posList = '';
     if (groupArr && groupArr.length > 1) {
@@ -1882,6 +1889,7 @@ button { font-family: inherit; }
       '<button class="iw-add" data-role="add" type="button">＋ 添加条目</button>' +
       visitsHtml +
       '<div class="iw-actions">' +
+        (telHref ? '<button class="iw-call" data-role="call" type="button">📞 拨打</button>' : '') +
         '<button class="iw-go" data-role="go" type="button">到这里</button>' +
         '<button class="iw-nav" data-role="nav" type="button">手机导航</button>' +
         '<button class="iw-delcus" data-role="delcus" type="button">删除客户</button>' +
@@ -1938,11 +1946,26 @@ button { font-family: inherit; }
     var addBtn = content.querySelector('[data-role="add"]');
     var goBtn = content.querySelector('[data-role="go"]');
     var navBtn = content.querySelector('[data-role="nav"]');
+    var callBtn = content.querySelector('[data-role="call"]');
     var tagAddBtn = content.querySelector('[data-role="tagadd"]');
     var tagInput = content.querySelector('[data-role="taginput"]');
     var okBtn = content.querySelector('[data-role="ok"]');
     var delCusBtn = content.querySelector('[data-role="delcus"]');
     var closeBtn = content.querySelector('[data-role="close"]');
+
+    /* 拨打：手机端直接调起拨号 */
+    if (callBtn) {
+      callBtn.addEventListener('click', function () {
+        var t = (c.info || []).filter(function (it) { return it && it.k === '电话'; })[0];
+        var num = t ? t.v.replace(/[^\d+\-() ]/g, '') : '';
+        if (num) { window.location.href = 'tel:' + num; }
+      });
+    }
+    /* 号码链接：阻止事件冒泡，避免被高德信息窗容器/地图事件拦截而无法调起拨号 */
+    content.addEventListener('click', function (e) {
+      var la = e.target.closest('.iw-tel-link');
+      if (la) { e.stopPropagation(); e.preventDefault(); window.location.href = la.getAttribute('href'); }
+    });
 
     /* 同位置客户清单：点击名字切换查看该位置的其他客户 */
     [].forEach.call(content.querySelectorAll('.iw-poslist a[data-cid]'), function (a) {
