@@ -1489,7 +1489,13 @@ button { font-family: inherit; }
   }
 
   function updateCount() {
-    $('count').textContent = '已标记 ' + customers.length + ' 个客户';
+    /* 地图上只会显示有坐标（已定位）的客户；标题区分「已标记」与「待定位」，
+       避免与地图聚合数量不一致造成困惑 */
+    var located = customers.filter(function (c) { return typeof c.lng === 'number' && typeof c.lat === 'number'; }).length;
+    var pending = customers.length - located;
+    $('count').textContent = pending > 0
+      ? '已标记 ' + located + ' 个客户（' + pending + ' 个待定位）'
+      : '已标记 ' + located + ' 个客户';
     updateStats();
     renderCustomerList();
   }
