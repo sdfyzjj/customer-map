@@ -981,6 +981,7 @@ button { font-family: inherit; }
         if (pm) openInfo(pl, pm.raw);
         toast('已为「' + pl.name + '」补充位置');
       } else {
+        if (suppressMapClose) { suppressMapClose = false; return; } /* 移动端：点击标记后紧跟的地图 click 不再关闭信息窗 */
         infoWindow.close();
       }
     });
@@ -1871,11 +1872,17 @@ button { font-family: inherit; }
     window.open(url, '_blank');
   }
 
+  /* 移动端点击标记时，触摸事件会同时触发「标记 click」和「地图 click」，
+     若地图 click 随即执行 close()，信息窗会“闪一下就消失”。
+     打开信息窗后短暂置位，地图 click 处理器检查后跳过本次关闭 */
+  var suppressMapClose = false;
   function openInfo(c, marker, groupArr) {
     if (!infoWindow) return;
     var content = document.createElement('div');
     content.innerHTML = buildInfoHtml(c, groupArr);
     infoWindow.setContent(content);
+    suppressMapClose = true;
+    setTimeout(function () { suppressMapClose = false; }, 400);
     infoWindow.open(map, [c.lng, c.lat]);
     bindInfoEvents(c, marker, content, groupArr);
   }
