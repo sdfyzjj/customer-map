@@ -1,0 +1,3211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 禁止浏览器缓存页面，保证每次打开都加载最新版本 -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>客户标记 · 高德地图客户管理</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: #1f2329; background: #eef0f3; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+button { font-family: inherit; }
+.hidden { display: none !important; }
+
+/* ===== 本地文件方式提示条 ===== */
+.file-warn {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: #fff7e6; color: #8a5b00; border-bottom: 1px solid #ffd591;
+  padding: 8px 16px; font-size: 12px; line-height: 1.6; z-index: 1001;
+}
+.file-warn.hidden { display: none; }
+.file-warn span { flex: 1; }
+.file-warn button {
+  flex: none; border: 1px solid #ffd591; background: #fff; color: #8a5b00;
+  border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.file-warn button:hover { background: #fff1d6; }
+
+/* ===== 顶部栏 ===== */
+#app-header {
+  position: relative; flex: none; z-index: 1000;
+  background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; gap: 10px;
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand .logo {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  background: #1E6FFF; display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.brand h1 { font-size: 16px; font-weight: 600; line-height: 1.25; white-space: nowrap; }
+.brand p { font-size: 11px; color: #8a919f; white-space: nowrap; }
+#count { font-size: 12px; color: #1E6FFF; background: #eef3ff; border-radius: 12px; padding: 3px 10px; margin-left: 6px; white-space: nowrap; }
+/* ===== 顶部状态统计徽章 ===== */
+#stats { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+.stat {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: #5c6470; background: #f7f8fa;
+  border-radius: 10px; padding: 2px 8px; white-space: nowrap;
+}
+.stat i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.stat b { color: #1f2329; font-weight: 600; }
+.stat.st-dealed i { background: #E64340; }
+.stat.st-interested i { background: #FF7FA8; }
+.stat.st-consulted i { background: #3ECF8E; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.btn {
+  height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #e2e5ea;
+  background: #fff; color: #333; font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: #1E6FFF; color: #1E6FFF; }
+.btn.primary { background: #1E6FFF; border-color: #1E6FFF; color: #fff; }
+.btn.primary:hover { background: #1560e0; }
+.btn.active { background: #1E6FFF; border-color: #1E6FFF; color: #fff; }
+.btn svg { width: 15px; height: 15px; flex: none; }
+.btn .label { display: inline; }
+@media (max-width: 640px) {
+  .btn .label { display: none; }
+  .btn { padding: 0 10px; }
+}
+
+/* ===== 地图 ===== */
+#map { position: relative; flex: 1; min-height: 0; background: #dfe3e8; }
+.map-empty-tip {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  text-align: center; color: #5c6470; font-size: 14px; line-height: 2; z-index: 5;
+  pointer-events: none; display: none;
+}
+.map-empty-tip.show { display: block; }
+.map-empty-tip .big { font-size: 40px; color: #b9c0cc; }
+
+/* ===== 左侧可展开/缩回信息栏 ===== */
+/* 收起状态的按钮组（常驻地图左上角：路线 / 客户） */
+.side-toggles {
+  position: absolute; top: 12px; left: 12px; z-index: 940;
+  display: flex; align-items: center; gap: 8px;
+}
+.side-toggle {
+  display: flex; align-items: center; gap: 6px;
+  height: 40px; padding: 0 14px;
+  background: #fff; border: none; border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.16); cursor: pointer;
+  color: #1E6FFF; font-size: 14px; font-weight: 600;
+}
+.side-toggle svg { width: 18px; height: 18px; }
+.side-toggle:hover { background: #f2f6ff; }
+
+/* 展开后的侧边栏 */
+.side-panel {
+  position: absolute; top: 12px; left: 12px; bottom: 12px; width: 320px;
+  max-width: calc(100% - 24px); z-index: 960;
+  background: #fff; border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  display: flex; flex-direction: column; overflow: hidden;
+  transition: transform .28s ease, opacity .22s ease;
+  transform: translateX(0); opacity: 1;
+}
+.side-panel.collapsed {
+  transform: translateX(calc(-100% - 44px));
+  opacity: 0; pointer-events: none;
+}
+.sp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 10px; flex: none;
+}
+.sp-head .t {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 700; color: #1f2329;
+}
+.sp-head .t svg { width: 18px; height: 18px; color: #1E6FFF; }
+.sp-close {
+  border: none; background: #f2f4f7; color: #5c6470; width: 26px; height: 26px;
+  border-radius: 50%; font-size: 18px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.sp-close:hover { background: #e5e9ef; color: #1f2329; }
+.sp-body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
+.sp-empty { color: #8a919f; font-size: 13px; line-height: 1.8; padding: 24px 8px; text-align: center; }
+
+/* 导航式信息卡（蓝色大卡片：方式 / 时间 / 公里数） */
+.sp-info {
+  background: linear-gradient(135deg, #1E6FFF, #4A8BFF);
+  border-radius: 12px; padding: 14px 16px; color: #fff; margin-bottom: 12px;
+}
+.sp-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sp-mode { font-size: 13px; font-weight: 600; opacity: .95; white-space: nowrap; }
+.sp-time { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.sp-time b { font-size: 27px; }
+.sp-km { margin-top: 5px; font-size: 13px; opacity: .95; }
+.sp-km b { font-size: 15px; }
+
+.sp-modes { display: flex; gap: 6px; margin: 12px 0; }
+.sp-modes .mode-btn { flex: 1; }
+.mode-btn {
+  flex: 1; height: 30px; border: 1px solid #e2e5ea; background: #fff; color: #5c6470;
+  border-radius: 7px; font-size: 12px; cursor: pointer; transition: all .15s;
+}
+.mode-btn:hover { border-color: #1E6FFF; color: #1E6FFF; }
+.mode-btn.active { background: #1E6FFF; border-color: #1E6FFF; color: #fff; }
+
+#sp-summary { margin-bottom: 6px; font-size: 13px; color: #5c6470; }
+#sp-summary .rs-main { font-size: 14px; color: #1f2329; line-height: 1.6; }
+#sp-summary .rs-main b { color: #1E6FFF; }
+#sp-steps { flex: 1; }
+.step { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f5f6f8; font-size: 13px; line-height: 1.55; }
+.step .idx {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; margin-top: 1px;
+  background: #eef3ff; color: #1E6FFF; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+}
+.step .txt { color: #333; }
+
+/* ===== 客户列表侧栏 ===== */
+.cp-body { display: flex; flex-direction: column; overflow: hidden; }
+#cust-search {
+  flex: none; width: 100%; height: 34px; border: 1px solid #dcdfe4; border-radius: 8px;
+  padding: 0 10px; font-size: 13px; outline: none;
+}
+#cust-search:focus { border-color: #1E6FFF; box-shadow: 0 0 0 3px rgba(30,111,255,.12); }
+.cp-filters { display: flex; gap: 6px; margin: 10px 0 4px; flex: none; }
+.cp-f {
+  flex: 1; height: 28px; border: 1px solid #e2e5ea; background: #fff; color: #5c6470;
+  border-radius: 7px; font-size: 12px; cursor: pointer; transition: all .15s;
+}
+.cp-f:hover { border-color: #1E6FFF; color: #1E6FFF; }
+.cp-f.active { background: #1E6FFF; border-color: #1E6FFF; color: #fff; }
+#cust-list { flex: 1; overflow-y: auto; margin-top: 2px; }
+.cust-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 8px; border-radius: 9px; cursor: pointer;
+}
+.cust-item:hover { background: #f2f6ff; }
+.cust-item .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.cust-item .ci-main { flex: 1; min-width: 0; }
+.cust-item .ci-name { display: block; font-size: 13px; font-weight: 600; color: #1f2329; }
+.ov-tag {
+  display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px;
+  background: #fdeceb; color: #d83931; font-size: 10px; font-weight: 400;
+  border: 1px solid #f3c2bf; vertical-align: 1px;
+}
+.cust-item .ci-sub {
+  display: block; font-size: 11px; color: #8a919f; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cust-item .ci-st {
+  flex: none; font-size: 11px; padding: 2px 7px; border-radius: 9px;
+  background: #fafbfc; white-space: nowrap;
+}
+.cust-item .ci-del {
+  flex: none; width: 22px; height: 22px; border: none; background: transparent;
+  color: #c0c6cf; border-radius: 50%; font-size: 13px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.cust-item .ci-del:hover { color: #d83931; background: #fdeeee; }
+/* 多选拜访模式 */
+.cp-head-actions { display: flex; align-items: center; gap: 8px; }
+.cp-multi-btn {
+  height: 26px; padding: 0 10px; border: 1px solid #1E6FFF; background: #fff; color: #1E6FFF;
+  border-radius: 7px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.cp-multi-btn:hover { background: #f2f6ff; }
+.cp-multi-btn.active { background: #1E6FFF; color: #fff; }
+.cust-item .ck {
+  flex: none; width: 18px; height: 18px; border: 1px solid #c9cdd4; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; line-height: 1;
+}
+.cust-item.selected { background: #eef3ff; }
+.cust-item.selected .ck { background: #1E6FFF; border-color: #1E6FFF; }
+.multi-bar { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.multi-bar span { flex: 1; min-width: 0; font-size: 12px; color: #5c6470; }
+.multi-bar .btn { height: 32px; padding: 0 12px; font-size: 12px; flex: none; }
+.multi-bar .btn:disabled { opacity: .5; cursor: not-allowed; }
+.cust-io { flex: none; display: flex; gap: 8px; margin-top: 10px; }
+.cust-io .btn {
+  flex: 1; height: 34px; justify-content: center;
+  font-size: 12px; padding: 0 10px; white-space: nowrap;
+}
+.rs-order { font-size: 12px; color: #5c6470; line-height: 1.6; margin-top: 3px; word-break: break-all; }
+
+/* 统计报表 */
+.st-total { font-size: 14px; color: #1f2329; margin-bottom: 14px; }
+.st-total b { color: #1E6FFF; font-size: 22px; margin: 0 2px; }
+.st-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.st-label { flex: none; width: 68px; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #333; }
+.st-label .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.st-bar { flex: 1; height: 12px; background: #f0f1f3; border-radius: 6px; overflow: hidden; }
+.st-bar-fill { height: 100%; border-radius: 6px; min-width: 2px; }
+.st-num { flex: none; width: 86px; text-align: right; font-size: 12px; color: #666; }
+.st-noloc { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #e5e6eb; font-size: 13px; color: #666; }
+/* 回收站列表样式 */
+.trash-item { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid #f0f0f0; }
+.trash-main { flex: 1; min-width: 0; }
+.trash-name { font-weight: 600; font-size: 13px; color: #1f2329; }
+.trash-tel { margin-left: 8px; font-size: 12px; color: #666; }
+.trash-st { margin-left: 8px; font-size: 12px; }
+.trash-time { font-size: 11px; color: #999; white-space: nowrap; }
+.trash-restore, .trash-purge { flex: none; font-size: 12px; padding: 4px 10px; }
+.trash-purge { color: #d83931; border-color: #f3c2bf; }
+.st-noloc b { color: #d83931; }
+.iw-poslist {
+  background: #f2f7ff; border: 1px solid #d6e6ff; border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; color: #555; margin: 0 0 8px;
+  line-height: 1.7;
+}
+.iw-poslist b { color: #1E6FFF; }
+.iw-poslist a { color: #1E6FFF; cursor: pointer; text-decoration: none; margin: 0 2px; }
+.iw-poslist a:hover { text-decoration: underline; }
+/* 客户标签 */
+.iw-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.iw-tags-label { font-size: 12px; color: #5c6470; }
+.iw-tags-box { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+.iw-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #eef4ff; color: #1E6FFF; border: 1px solid #d6e6ff;
+  border-radius: 4px; font-size: 11px; padding: 1px 6px;
+}
+.iw-tag b { cursor: pointer; font-weight: 700; color: #1E6FFF; opacity: .7; }
+.iw-tag b:hover { opacity: 1; color: #d83931; }
+.iw-tags-empty { font-size: 11px; color: #b0b6bf; }
+.iw-tags input {
+  width: 110px; border: 1px solid #e2e4e9; border-radius: 4px;
+  font-size: 12px; padding: 3px 6px;
+}
+.iw-tags .btn, .iw-tags button { font-size: 12px; padding: 3px 8px; }
+.ci-tag {
+  display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 4px;
+  background: #eef4ff; color: #1E6FFF; border: 1px solid #d6e6ff;
+  font-size: 10px; font-weight: 400; vertical-align: 1px;
+}
+.mk-wrap { position: relative; }
+.mk-badge {
+  position: absolute; top: -8px; right: -12px;
+  background: #d83931; color: #fff; border-radius: 9px;
+  font-size: 10px; line-height: 15px; padding: 0 5px; white-space: nowrap;
+  border: 1px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  font-weight: 600;
+}
+/* 高德 InfoWindow 容器区域不拦截点击（避免遮挡地图上的聚合点/标记）；内容与关闭按钮保持可交互 */
+.amap-info-contentContainer { pointer-events: none; }
+.amap-info-contentContainer .amap-info-content,
+.amap-info-contentContainer .amap-info-close { pointer-events: auto; }
+.multi-bar .btn-danger { color: #d83931; border-color: #f3c2bf; }
+/* 地图标记上方的客户姓名名牌 */
+.mk-label {
+  background: #fff; color: #1f2329; font-size: 12px; font-weight: 600;
+  padding: 3px 9px; border-radius: 7px; white-space: nowrap; line-height: 1.4;
+  box-shadow: 0 1px 5px rgba(0,0,0,.28); border: 1px solid rgba(30,111,255,.35);
+  pointer-events: none;
+}
+/* 聚合点：密集客户合并后的数字圆点 */
+.mk-cluster {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #1E6FFF; color: #fff; font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #fff; box-shadow: 0 2px 8px rgba(30,111,255,.55);
+}
+
+/* ===== 弹窗 ===== */
+.mask {
+  position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.mask.hidden { display: none; }
+/* 从设置弹窗内打开的回收站窗口需要盖在设置之上；确认弹窗永远在最上层 */
+#trash-mask { z-index: 2100; }
+#confirm-mask { z-index: 3000; }
+.modal {
+  width: 440px; max-width: 94vw; background: #fff; border-radius: 14px;
+  padding: 22px 24px; box-shadow: 0 12px 44px rgba(0,0,0,.22);
+  max-height: 86vh; overflow-y: auto;
+}
+.modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.modal .tip { font-size: 12px; color: #8a919f; margin: 8px 0 14px; line-height: 1.6; }
+.modal label { display: block; font-size: 12px; color: #5c6470; margin: 12px 0 6px; }
+.modal input[type="text"], .modal input[type="password"] {
+  width: 100%; height: 38px; border: 1px solid #dcdfe4; border-radius: 8px; padding: 0 12px; font-size: 13px; outline: none;
+}
+.modal input:focus { border-color: #1E6FFF; box-shadow: 0 0 0 3px rgba(30,111,255,.12); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.modal-actions .left { margin-right: auto; }
+.modal-actions .btn-danger { color: #d83931; border-color: #f3c2bf; }
+.modal-actions .btn-danger:hover { border-color: #d83931; color: #d83931; }
+.addr-row { display: flex; gap: 8px; margin-top: 6px; }
+.addr-row input {
+  flex: 1; min-width: 0; height: 38px; border: 1px solid #dcdfe4; border-radius: 8px;
+  padding: 0 12px; font-size: 13px; outline: none;
+}
+.addr-row input:focus { border-color: #1E6FFF; box-shadow: 0 0 0 3px rgba(30,111,255,.12); }
+.addr-row .btn { flex: none; }
+.pick-tip {
+  font-size: 12px; color: #1E6FFF; background: #eef3ff;
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; line-height: 1.6;
+}
+.divider { border: none; border-top: 1px solid #f0f1f3; margin: 18px 0 4px; }
+.set-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+.set-row .btn { flex: 1; justify-content: center; }
+.set-row input[type="file"] { display: none; }
+.export-modal input[type="text"] {
+  font-size: 13px; background: #fff;
+}
+.export-hint { font-size: 12px; color: #8a919f; align-self: center; }
+.export-hint.err { color: #d83931; }
+
+/* ===== Toast ===== */
+#toast {
+  position: fixed; bottom: 42px; left: 50%; transform: translateX(-50%) translateY(8px);
+  background: rgba(17,24,39,.86); color: #fff; padding: 10px 20px; border-radius: 20px;
+  font-size: 13px; z-index: 3000; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s;
+  max-width: 84vw; text-align: center;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ===== 信息窗（标记弹窗）===== */
+.iw { width: 320px; font-size: 13px; }
+.iw-head input.iw-name {
+  width: 100%; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px;
+  font-size: 15px; font-weight: 600; outline: none; background: transparent;
+}
+.iw-head input.iw-name:hover, .iw-head input.iw-name:focus { border-color: #dcdfe4; background: #fff; }
+.iw-sub { font-size: 12px; color: #8a919f; margin: 4px 2px 6px; }
+/* 客户状态选择（已成交=红 / 有意向=粉 / 咨询过=绿） */
+.iw-status { display: flex; gap: 6px; margin: 0 0 6px; }
+.st-btn {
+  flex: 1; height: 28px; border: 1px solid #e2e5ea; border-radius: 7px;
+  background: #fff; color: #5c6470; font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  transition: all .15s;
+}
+.st-btn .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.st-btn[data-status="dealed"] .dot { background: #E64340; }
+.st-btn[data-status="interested"] .dot { background: #FF7FA8; }
+.st-btn[data-status="consulted"] .dot { background: #3ECF8E; }
+.st-btn:hover { border-color: #1E6FFF; color: #1f2329; }
+.st-btn.active[data-status="dealed"] { background: #E64340; border-color: #E64340; color: #fff; }
+.st-btn.active[data-status="interested"] { background: #FF7FA8; border-color: #FF7FA8; color: #fff; }
+.st-btn.active[data-status="consulted"] { background: #3ECF8E; border-color: #3ECF8E; color: #fff; }
+.st-btn.active .dot { background: #fff; }
+.iw-rows { max-height: 210px; overflow-y: auto; }
+.iw-empty { font-size: 12px; color: #b0b6c0; text-align: center; padding: 10px 0; }
+.iw-row { display: flex; gap: 6px; margin: 6px 0; align-items: center; }
+.iw-row input {
+  flex: 1; min-width: 0; height: 34px; border: 1px solid #dcdfe4; border-radius: 8px;
+  padding: 0 10px; font-size: 13px; outline: none; background: #fafbfc;
+}
+.iw-row input:focus { border-color: #1E6FFF; background: #fff; box-shadow: 0 0 0 3px rgba(30,111,255,.12); }
+/* 固定条目行（姓名 / 电话 / 地址）：键为标签样式，不可删除，仅可编辑值 */
+.iw-row.iw-fixed { gap: 6px; }
+.iw-row.iw-fixed .iw-key {
+  flex: 0 0 64px; min-width: 0; height: 34px; display: flex; align-items: center;
+  border: 1px solid #dcdfe4; border-right: none; border-radius: 8px 0 0 8px;
+  padding: 0 10px; font-size: 13px; color: #4e5969; background: #eef1f5; white-space: nowrap;
+}
+.iw-row.iw-fixed input { border-radius: 0 8px 8px 0; }
+.iw-del {
+  flex: none; width: 28px; height: 28px; border: none; border-radius: 8px; cursor: pointer;
+  background: #f4f5f7; color: #8a919f; font-size: 16px; line-height: 1;
+}
+.iw-del:hover { background: #fdeceb; color: #d83931; }
+.iw-add {
+  width: 100%; margin-top: 8px; height: 32px; border: 1px dashed #c9cdd4; border-radius: 8px;
+  background: #fafbfc; color: #1E6FFF; font-size: 12px; cursor: pointer;
+}
+.iw-add:hover { border-color: #1E6FFF; background: #f2f6ff; }
+.iw-actions { display: flex; gap: 8px; margin-top: 12px; }
+.iw-actions button {
+  height: 34px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid transparent;
+}
+.iw-go { flex: 1.4; background: #1E6FFF; color: #fff; }
+.iw-go:hover { background: #1560e0; }
+.iw-ok { flex: 1; background: #f4f5f7; color: #333; }
+.iw-ok:hover { background: #e5e6eb; }
+.iw-delcus { flex: 1; background: #fff; color: #d83931; border-color: #f3c2bf !important; }
+.iw-delcus:hover { background: #fdeceb; }
+.iw-close { flex: 1; background: #f4f5f7; color: #333; }
+.iw-close:hover { background: #e8eaee; }
+
+/* 拜访记录 */
+.iw-visit-list { max-height: 150px; overflow-y: auto; margin-top: 6px; }
+.iw-visit { display: flex; gap: 6px; align-items: flex-start; padding: 5px 6px; border-radius: 6px; background: #f7f8fa; margin: 4px 0; font-size: 12px; }
+.iv-time { flex: none; color: #8f959e; white-space: nowrap; padding-top: 1px; }
+.iv-note { flex: 1; color: #1f2329; word-break: break-all; }
+.iv-del { flex: none; border: none; background: none; color: #c9cdd4; cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+.iv-del:hover { color: #d83931; }
+.iw-novisit { color: #8f959e; font-size: 12px; padding: 6px 2px; }
+.iw-visit-add { display: flex; gap: 6px; margin-top: 8px; }
+.iw-visit-add input { flex: 1; height: 30px; border: 1px solid #d8dce3; border-radius: 8px; padding: 0 10px; font-size: 12px; }
+.iw-visit-add input:focus { outline: none; border-color: #1E6FFF; }
+.iw-visit-add button { flex: none; height: 30px; padding: 0 14px; border: none; border-radius: 8px; background: #1E6FFF; color: #fff; font-size: 12px; cursor: pointer; }
+.iw-visit-add button:hover { background: #1560e0; }
+
+/* 隐藏高德信息窗自带的关闭按钮，使用自定义关闭 */
+.amap-info-close { display: none !important; }
+.amap-info-content { padding: 0 !important; }
+.amap-info { border-radius: 14px !important; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,.18) !important; border: none !important; }
+
+/* ===== 响应式 ===== */
+@media (max-width: 720px) {
+  #app-header { padding: 8px 10px; flex-wrap: wrap; }
+  .brand p { display: none; }
+  .side-panel { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 48vh; }
+  .side-panel.collapsed { transform: translateY(calc(100% + 24px)); }
+  .iw { width: 264px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== 本地文件方式提示条 ===== -->
+<div id="file-warn" class="file-warn hidden">
+  <span>当前为本地文件方式打开，浏览器禁用了精确定位（定位仅到城市级且可能有偏差）。建议双击「启动本地服务器.bat」打开页面，即可精确定位到你的位置。</span>
+  <button id="file-warn-close" type="button">知道了</button>
+</div>
+
+<!-- ===== 顶部栏 ===== -->
+<header id="app-header">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+    </div>
+    <div>
+      <h1>聚能客户标记管理 <span id="count"></span></h1>
+      <p>双击地图插入红旗 · 点击红旗查看客户信息</p>
+      <div id="stats"></div>
+    </div>
+  </div>
+  <div class="actions">
+    <button id="btn-add" class="btn primary" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span class="label">添加客户</span>
+    </button>
+    <button id="btn-locate" class="btn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
+      <span class="label">定位到我</span>
+    </button>
+    <button id="btn-clear-route" class="btn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+      <span class="label">清除路线</span>
+    </button>
+    <button id="btn-cluster-toggle" class="btn" type="button" title="标记聚合开关：开启后密集客户合并为数字，放大后展开为单个标记">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="3"/><circle cx="5.5" cy="17.5" r="3"/><circle cx="18.5" cy="17.5" r="3"/><path d="M12 9v2M7.5 15.5l3-2.5M16.5 15.5l-3-2.5"/></svg>
+      <span class="label">聚合</span>
+    </button>
+    <button id="btn-heat-toggle" class="btn" type="button" title="热力图：用颜色深浅直观显示客户密集程度">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3c2 3 5 4.5 5 8a5 5 0 0 1-10 0c0-1 .3-2 .8-2.9C8.5 9 10 8.5 12 3Z"/><path d="M4 17c1.5 1.5 3.5 2 6 2s4.5-.5 6-2"/></svg>
+      <span class="label">热力</span>
+    </button>
+    <button id="btn-settings" class="btn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+      <span class="label">设置</span>
+    </button>
+  </div>
+</header>
+
+<!-- ===== 地图 ===== -->
+<div id="map">
+  <div id="map-empty-tip" class="map-empty-tip">
+    <div class="big">▦</div>
+    <div id="map-empty-text">正在初始化地图…</div>
+  </div>
+
+  <!-- 收起状态：路线 / 客户按钮（常驻地图左上角） -->
+  <div class="side-toggles">
+    <button id="side-toggle" class="side-toggle" type="button" title="展开/缩回路线信息">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-9 4 6 3-4 6 7"/><circle cx="5" cy="17" r="1.6"/><circle cx="19" cy="17" r="1.6"/></svg>
+      <span>路线</span>
+    </button>
+    <button id="cust-toggle" class="side-toggle" type="button" title="展开/缩回客户列表">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.4"/><circle cx="4" cy="12" r="1.4"/><circle cx="4" cy="18" r="1.4"/></svg>
+      <span>客户</span>
+    </button>
+  </div>
+
+  <!-- 可展开/缩回的左侧信息栏 -->
+  <aside id="side-panel" class="side-panel collapsed">
+    <div class="sp-head">
+      <span class="t">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-9 4 6 3-4 6 7"/><circle cx="5" cy="17" r="1.6"/><circle cx="19" cy="17" r="1.6"/></svg>
+        路线信息
+      </span>
+      <button id="sp-close" class="sp-close" type="button" title="缩回">›</button>
+    </div>
+    <div class="sp-body">
+      <div id="sp-empty" class="sp-empty">点击客户标记上的「到这里」，<br>即可规划从你位置出发的路线<br>（支持驾车 / 步行 / 骑行 / 公交）</div>
+      <div id="sp-info" class="sp-info hidden">
+        <div class="sp-main">
+          <span id="sp-mode" class="sp-mode">驾车</span>
+          <span id="sp-time" class="sp-time">约 <b>0</b> 分钟</span>
+        </div>
+        <div id="sp-km" class="sp-km">全程 <b>0</b> 公里</div>
+      </div>
+      <div id="sp-modes" class="sp-modes hidden">
+        <button class="mode-btn active" data-mode="driving" type="button">驾车</button>
+        <button class="mode-btn" data-mode="walking" type="button">步行</button>
+        <button class="mode-btn" data-mode="riding" type="button">骑行</button>
+        <button class="mode-btn" data-mode="transit" type="button">公交</button>
+      </div>
+      <div id="sp-summary" class="hidden"></div>
+      <div id="sp-steps"></div>
+    </div>
+  </aside>
+
+  <!-- 可展开/缩回的客户列表侧栏 -->
+  <aside id="cust-panel" class="side-panel collapsed">
+    <div class="sp-head">
+      <span class="t">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.4"/><circle cx="4" cy="12" r="1.4"/><circle cx="4" cy="18" r="1.4"/></svg>
+        客户列表 <span id="cust-count"></span>
+      </span>
+      <span class="cp-head-actions">
+        <button id="btn-multi" class="cp-multi-btn" type="button">选择拜访</button>
+        <button id="btn-stats" class="cp-multi-btn" type="button">统计</button>
+        <button id="cp-close" class="sp-close" type="button" title="缩回">›</button>
+      </span>
+    </div>
+    <div class="sp-body cp-body">
+      <input id="cust-search" type="text" placeholder="搜索名称 / 电话 / 备注…" autocomplete="off">
+      <div id="cust-filters" class="cp-filters">
+        <button class="cp-f active" data-st="all" type="button">全部</button>
+        <button class="cp-f" data-st="dealed" type="button">已成交</button>
+        <button class="cp-f" data-st="interested" type="button">有意向</button>
+        <button class="cp-f" data-st="consulted" type="button">咨询过</button>
+      </div>
+      <div id="cust-list"></div>
+      <div id="cust-io" class="cust-io">
+        <button id="btn-cust-export" class="btn" type="button">导出 Excel</button>
+        <button id="btn-cust-import" class="btn" type="button">导入 Excel</button>
+        <input id="cust-import-file" type="file" accept=".xlsx,.xls,.csv,.json,application/json" class="hidden">
+      </div>
+      <div id="multi-bar" class="multi-bar hidden">
+        <span id="multi-info">已选 0 个客户</span>
+        <button id="btn-plan-multi" class="btn primary" type="button" disabled>开始规划</button>
+        <button id="btn-batch-status" class="btn" type="button">批量改状态</button>
+        <button id="btn-batch-del" class="btn btn-danger" type="button">批量删除</button>
+        <button id="btn-multi-cancel" class="btn" type="button">取消</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ===== 添加客户弹窗 ===== -->
+<div id="add-mask" class="mask hidden">
+  <div class="modal">
+    <h3>添加客户标记</h3>
+    <p class="tip">方式一：输入客户地址自动添加；方式二：在地图上选点添加。</p>
+
+    <!-- 方式一：通过地址添加 -->
+    <div id="add-by-addr">
+      <label>客户地址</label>
+      <div class="addr-row">
+        <input id="add-addr-input" type="text" placeholder="如：山东省临沂市兰山区白沙埠镇 XX 路" autocomplete="off">
+        <button id="btn-addr-add" class="btn primary" type="button">添加</button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 方式二：地图选点后确认 -->
+    <div id="add-by-pick">
+      <div id="pick-tip" class="pick-tip hidden">已在地图上选点，确认后在该位置添加</div>
+      <label>客户名称（不填自动编号，如"客户1"）</label>
+      <input id="new-customer-name" type="text" placeholder="如：张老板" maxlength="30" autocomplete="off">
+    </div>
+
+    <div class="modal-actions">
+      <button id="btn-map-pick" class="btn" type="button">在地图上选点</button>
+      <span style="flex:1"></span>
+      <button id="btn-modal-ok" class="btn primary" type="button">确定添加</button>
+      <button id="btn-modal-cancel" class="btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 统计报表弹窗 ===== -->
+<div id="stats-mask" class="mask hidden">
+  <div class="modal">
+    <h3>客户统计</h3>
+    <div id="stats-body"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <span style="flex:1"></span>
+      <button id="btn-stats-close" class="btn" type="button">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 批量改状态弹窗 ===== -->
+<div id="batch-status-mask" class="mask hidden">
+  <div class="modal">
+    <h3>批量修改状态</h3>
+    <p class="tip" id="batch-status-info"></p>
+    <div class="iw-status" id="batch-status-btns">
+      <button class="st-btn" data-status="dealed" type="button"><span class="dot"></span>已成交</button>
+      <button class="st-btn" data-status="interested" type="button"><span class="dot"></span>有意向</button>
+      <button class="st-btn" data-status="consulted" type="button"><span class="dot"></span>咨询过</button>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <span style="flex:1"></span>
+      <button id="btn-batch-status-cancel" class="btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 回收站弹窗 ===== -->
+<div id="trash-mask" class="mask hidden">
+  <div class="modal" style="width:520px; max-width:92vw;">
+    <h3>回收站 <span class="tip" id="trash-count"></span></h3>
+    <div id="trash-list" style="max-height:52vh; overflow:auto;"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button id="btn-trash-clear" class="btn btn-danger" type="button">清空回收站</button>
+      <span style="flex:1"></span>
+      <button id="btn-trash-close" class="btn" type="button">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 设置弹窗 ===== -->
+<div id="settings-mask" class="mask hidden">
+  <div class="modal">
+    <h3>地图设置</h3>
+    <p class="tip">
+      本工具基于高德地图 JS API，需要先申请开发者 Key（免费）。
+      <br>申请地址：<a href="https://console.amap.com" target="_blank" rel="noopener">console.amap.com</a> → 应用管理 → 创建应用 → 添加 Key，服务平台选择「Web端(JS API)」。
+    </p>
+    <label>高德 Key（必填）</label>
+    <input id="set-key" type="text" placeholder="粘贴你的高德 Web端 Key" autocomplete="off">
+    <label>安全密钥 securityJsCode（选填，开启安全密钥功能后填写）</label>
+    <input id="set-security" type="text" placeholder="未开启则留空" autocomplete="off" style="-webkit-text-security: disc">
+    <label style="margin-top:16px">输入地址定位我的位置（最精确，推荐）</label>
+    <div class="addr-row">
+      <input id="addr-input" type="text" placeholder="如：临沂市兰山区白沙埠镇" autocomplete="off">
+      <button id="btn-addr-locate" class="btn primary" type="button">定位</button>
+    </div>
+    <hr class="divider">
+    <div class="set-row">
+      <button id="btn-manual-locate" class="btn" type="button">手动设置我的位置</button>
+    </div>
+    <div class="set-row">
+      <button id="btn-backup" class="btn" type="button">一键备份数据</button>
+      <button id="btn-restore" class="btn" type="button">恢复备份</button>
+      <input id="restore-file" type="file" accept=".json,application/json" class="hidden">
+    </div>
+    <div class="set-row">
+      <button id="btn-trash" class="btn" type="button">回收站（误删恢复）</button>
+    </div>
+    <label style="margin-top:14px">跟进提醒（超过 N 天未拜访的客户显示「未跟进」，0 为关闭）</label>
+    <input id="set-remind" type="number" min="0" max="365" placeholder="如：30" autocomplete="off">
+    <div class="modal-actions">
+      <button id="btn-settings-clear" class="btn btn-danger left" type="button">清除全部客户数据</button>
+      <button id="btn-settings-cancel" class="btn" type="button">取消</button>
+      <button id="btn-settings-save" class="btn primary" type="button">保存并加载地图</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 导出 Excel 弹窗（可自定义保存路径） ===== -->
+<div id="export-mask" class="mask hidden">
+  <div class="modal export-modal">
+    <h3>导出客户数据（Excel）</h3>
+    <p class="tip">默认保存到项目文件夹，可修改保存位置与文件名。</p>
+    <label>保存位置</label>
+    <input id="export-path" type="text" placeholder="如：C:\Users\Lenovo\Desktop\客户标记" autocomplete="off" spellcheck="false">
+    <label style="margin-top:12px">文件名</label>
+    <input id="export-fname" type="text" placeholder="客户标记数据_2026-09-08.xlsx" autocomplete="off" spellcheck="false">
+    <div class="modal-actions" style="margin-top:18px">
+      <span id="export-hint" class="export-hint"></span>
+      <span style="flex:1"></span>
+      <button id="btn-export-cancel" class="btn" type="button">取消</button>
+      <button id="btn-export-confirm" class="btn primary" type="button">导出</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 为客户补充位置弹窗 ===== -->
+<div id="locate-mask" class="mask hidden">
+  <div class="modal">
+    <h3>为客户补充位置</h3>
+    <p class="tip" id="locate-cust-name"></p>
+    <label>客户地址</label>
+    <div class="addr-row">
+      <input id="locate-addr-input" type="text" placeholder="如：山东省临沂市兰山区白沙埠镇 XX 路" autocomplete="off" spellcheck="false">
+      <button id="btn-locate-addr" class="btn primary" type="button">按地址定位</button>
+    </div>
+    <div class="modal-actions">
+      <span id="locate-hint" class="export-hint"></span>
+      <span style="flex:1"></span>
+      <button id="btn-locate-pick" class="btn" type="button">在地图上点击</button>
+      <button id="btn-locate-cancel" class="btn" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 通用确认弹窗（居中显示） ===== -->
+<div id="confirm-mask" class="mask hidden">
+  <div class="modal">
+    <h3 id="confirm-title">确认操作</h3>
+    <p class="tip" id="confirm-msg" style="margin:14px 0 4px; color:#1f2329; font-size:14px;"></p>
+    <div class="modal-actions">
+      <span style="flex:1"></span>
+      <button id="btn-confirm-cancel" class="btn" type="button">取消</button>
+      <button id="btn-confirm-ok" class="btn primary" type="button">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'customer_markers_data_v1';
+  var SETTINGS_KEY = 'customer_markers_settings_v1';
+  var USER_LOC_KEY = 'customer_markers_userloc_v1';
+
+  var map = null, infoWindow = null, driving = null, walking = null, riding = null, transfer = null;
+  var markers = [];
+  var customers = loadData() || [];
+  var addMode = false;
+  var userLocation = null;
+  var userMarker = null;
+  var locateByClickMode = false;
+  var transport = 'driving';
+  var planEnd = null;
+  var pendingPoint = null;
+  var toastTimer = null;
+  var planSeq = 0; /* 路线规划请求序号：切换方式/清除路线时使旧请求结果失效 */
+  var custFilter = 'all'; /* 客户列表状态筛选：all / dealed / interested / consulted */
+  var multiMode = false;  /* 客户多选拜访模式 */
+  var selectedIds = {};   /* 已勾选客户 id 集合 */
+  var multiPlan = null;   /* 多客户拜访路线（按拜访顺序排好的客户数组） */
+  var searchTouched = false; /* 客户搜索框是否被用户主动输入过（用于清除浏览器自动填充残留） */
+  var pendingLocateCustomer = null; /* 导入的「待定位」客户：点击地图为其补充位置 */
+  var pendingExport = null;         /* 待导出的表格数据 {headers, rows} */
+
+  function $(id) { return document.getElementById(id); }
+
+  function loadData() {
+    try { var d = JSON.parse(localStorage.getItem(STORAGE_KEY)); return Array.isArray(d) ? d : []; }
+    catch (e) { return []; }
+  }
+  function saveData() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(customers)); }
+    catch (e) { toast('保存失败：浏览器本地存储不可用'); }
+  }
+  function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || null; }
+    catch (e) { return null; }
+  }
+  function saveSettings(s) {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  /* “我的位置”持久化：输入地址/手动点击/定位成功时保存，刷新页面后仍生效 */
+  function setUserLocation(loc) {
+    userLocation = loc;
+    try { localStorage.setItem(USER_LOC_KEY, JSON.stringify(loc)); } catch (e) {}
+  }
+  function loadUserLocation() {
+    try {
+      var d = JSON.parse(localStorage.getItem(USER_LOC_KEY));
+      return (Array.isArray(d) && d.length === 2) ? d : null;
+    } catch (e) { return null; }
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function uid() {
+    return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  /* 客户状态：已成交=红 / 有意向=粉 / 咨询过=绿 */
+  var STATUS_COLORS = { dealed: '#E64340', interested: '#FF7FA8', consulted: '#3ECF8E' };
+  var STATUS_NAMES = { dealed: '已成交', interested: '有意向', consulted: '咨询过' };
+  function customerStatus(c) { return STATUS_COLORS[c && c.status] ? c.status : 'dealed'; }
+
+  /* 彩色小旗图标（客户标记，按状态着色） */
+  function flagSvg(color) {
+    var dark = '#B53230';
+    if (color === '#FF7FA8') { dark = '#E25E8C'; }
+    else if (color === '#3ECF8E') { dark = '#2BAF73'; }
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42" style="cursor:pointer">' +
+      '<path d="M16 42 L16 3" stroke="#4a4a4a" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<circle cx="16" cy="3" r="2.6" fill="#E6B800"/>' +
+      '<path d="M18 4 L31 10.5 L18 17 Z" fill="' + color + '" stroke="' + dark + '" stroke-width="1" stroke-linejoin="round"/>' +
+    '</svg>';
+  }
+  /* 蓝色水滴（我的位置） */
+  function userDropSvg() {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">' +
+      '<path d="M19 2 C19 2 4 18.5 4 30 a15 15 0 0 0 30 0 C34 18.5 19 2 19 2 Z" fill="#1E90FF" stroke="#ffffff" stroke-width="2.5"/>' +
+      '<circle cx="19" cy="30" r="6" fill="#ffffff"/>' +
+      '<circle cx="19" cy="30" r="3.2" fill="#1E90FF" opacity="0.35"/>' +
+    '</svg>';
+  }
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
+  }
+
+  /* 居中确认弹窗：替换浏览器原生 confirm（原生弹窗固定在浏览器顶部，无法控制位置） */
+  var confirmCallback = null;
+  function showConfirm(msg, onOk, title) {
+    $('confirm-title').textContent = title || '确认操作';
+    $('confirm-msg').textContent = msg;
+    confirmCallback = onOk;
+    $('confirm-mask').classList.remove('hidden');
+  }
+  /* 锚定确认弹窗：显示在客户标记名牌的上方（不遮挡标记），供删除客户等场景使用 */
+  function showConfirmAt(c, msg, onOk) {
+    var modal = $('confirm-mask').querySelector('.modal');
+    var px = null;
+    try { px = map.lngLatToContainer([c.lng, c.lat]); } catch (e) {}
+    var rect = $('map').getBoundingClientRect();
+    var x = rect.left + (px ? px.x : rect.width / 2);
+    var y = rect.top + (px ? px.y : rect.height / 2);
+    /* 名牌在标记上方约 86~112px，锚点取标记上方约 122px，弹窗整体位于锚点上方 */
+    y -= 122;
+    x = Math.max(12, Math.min(x, window.innerWidth - 12));
+    y = Math.max(12, y);
+    modal.style.position = 'fixed';
+    modal.style.left = x + 'px';
+    modal.style.top = y + 'px';
+    modal.style.transform = 'translate(-50%, -100%)';
+    showConfirm(msg, onOk);
+  }
+  function closeConfirm() {
+    $('confirm-mask').classList.add('hidden');
+    confirmCallback = null;
+    var modal = $('confirm-mask').querySelector('.modal');
+    modal.style.position = '';
+    modal.style.left = '';
+    modal.style.top = '';
+    modal.style.transform = '';
+  }
+
+  /* ================= 启动流程 ================= */
+  function init() {
+    bindGlobalEvents();
+    updateClusterBtn(); /* 菜单栏「聚合」按钮状态同步到已保存的设置 */
+    /* 防止浏览器自动填充/表单恢复把 Key 等值塞进客户列表搜索框（会污染筛选导致列表为空）。
+       自动填充可能加载后稍晚才生效，多次延时清空；用户真正输入过（keydown/paste）则不再清 */
+    function guardSearchBox() {
+      if (!searchTouched) { $('cust-search').value = ''; }
+    }
+    guardSearchBox();
+    setTimeout(guardSearchBox, 500);
+    setTimeout(guardSearchBox, 1500);
+    setTimeout(guardSearchBox, 3000);
+    var s = loadSettings();
+    if (s && s.key) {
+      loadMap(s.key, s.securityCode)
+        .then(function () { initMap(); })
+        .catch(function (err) { showMapTip('地图加载失败：' + err.message + '，请检查设置中的 Key'); openSettings(); });
+    } else {
+      showMapTip('尚未配置高德地图 Key，请点击右上角「设置」完成配置');
+      openSettings();
+    }
+  }
+
+  function loadMap(key, securityCode) {
+    return new Promise(function (resolve, reject) {
+      if (window.AMap) { resolve(window.AMap); return; }
+      if (securityCode) { window._AMapSecurityConfig = { securityJsCode: securityCode }; }
+      var s = document.createElement('script');
+      s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(key) +
+              '&plugin=AMap.Driving,AMap.Walking,AMap.Riding,AMap.Transfer,AMap.Geolocation,AMap.ToolBar,AMap.Scale,AMap.Geocoder,AMap.MarkerCluster';
+      s.onload = function () { resolve(window.AMap); };
+      s.onerror = function () { reject(new Error('地图脚本加载失败（可能是 Key 无效或网络不通）')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function initMap() {
+    var AMap = window.AMap;
+    map = new AMap.Map('map', {
+      zoom: 12,
+      center: [116.397428, 39.90923],
+      viewMode: '2D',
+      mapStyle: 'amap://styles/normal'
+    });
+    map.addControl(new AMap.ToolBar({ position: 'RB' }));
+    map.addControl(new AMap.Scale({ position: 'LB' }));
+
+    infoWindow = new AMap.InfoWindow({
+      offset: new AMap.Pixel(0, -34),
+      autoMove: true,
+      closeWhenClickMap: false
+    });
+
+    driving = new AMap.Driving({ map: map, policy: AMap.DrivingPolicy.LEAST_TIME });
+    walking = new AMap.Walking({ map: map });
+    riding = new AMap.Riding({ map: map });
+    transfer = new AMap.Transfer({ map: map, policy: AMap.TransferPolicy.LEAST_TIME });
+    /* 路线结果通过 search 的回调参数获取（见 doPlan），
+       并用请求序号丢弃过期结果，避免切换交通方式时旧结果覆盖新结果 */
+
+    map.on('click', function (e) {
+      if (addMode) {
+        pendingPoint = [e.lnglat.getLng(), e.lnglat.getLat()];
+        openAddModal();
+      } else if (locateByClickMode) {
+        var lng = e.lnglat.getLng(), lat = e.lnglat.getLat();
+        locateByClickMode = false;
+        $('map').style.cursor = '';
+        setUserLocation([lng, lat]);
+        updateUserMarker(userLocation);
+        toast('已手动设置我的位置');
+      } else if (pendingLocateCustomer) {
+        /* 为导入的「待定位」客户补充位置：点击地图即定位 */
+        var pl = pendingLocateCustomer;
+        pendingLocateCustomer = null;
+        $('map').style.cursor = '';
+        pl.lng = e.lnglat.getLng();
+        pl.lat = e.lnglat.getLat();
+        saveData();
+        renderMarkers();
+        renderCustomerList(); /* 地图点击补位后同步列表副标题 */
+        var pm = findMarker(pl.id);
+        if (pm) openInfo(pl, pm.raw);
+        toast('已为「' + pl.name + '」补充位置');
+      } else {
+        infoWindow.close();
+      }
+    });
+
+    /* 双击地图：在该位置插上一面彩色小旗（客户标记） */
+    /* 缩放结束后：跨渲染档（聚合<11 / 普通 / 散开≥11）时重渲染标记 */
+    map.on('zoomend', function () {
+      var sm = map.getZoom() >= 11;
+      var want = (!(loadSettings() || {}).clusterEnabled || sm) ? (sm ? 'spread' : 'normal') : 'cluster';
+      if (want !== lastRenderMode) renderMarkers();
+    });
+    map.on('dblclick', function (e) {
+      if (addMode) return; /* “添加客户”模式下单击选点添加，双击不插旗 */
+      var lng = e.lnglat.getLng(), lat = e.lnglat.getLat();
+      var near = findNearCustomer(lng, lat);
+      if (near) {
+        var nm = findMarker(near.id);
+        if (nm) openInfo(near, nm.raw);
+        return;
+      }
+      var c = { id: uid(), name: nextCustomerName(), lng: lng, lat: lat, status: 'consulted', info: [] };
+      customers.push(c);
+      saveData();
+      renderMarkers();
+      /* 地图点击反查地址：自动逆地理编码该坐标点，把地址填入「地址」固定条目 */
+      try {
+        AMap.plugin(['AMap.Geocoder'], function () {
+          var gc = new AMap.Geocoder({});
+          gc.getAddress([lng, lat], function (st, res) {
+            var addr = st === 'complete' && res && res.regeocode ? (res.regeocode.formattedAddress || '') : '';
+            if (addr && !fixedInfoVal(c, '地址')) {
+              c.info.push({ k: '地址', v: addr });
+              saveData();
+              renderCustomerList();
+            }
+          });
+        });
+      } catch (e) { /* 逆地理编码失败不影响添加客户 */ }
+      var cm = findMarker(c.id);
+      if (cm) openInfo(c, cm.raw);
+      toast('已添加客户「' + c.name + '」，点击旗帜可编辑信息');
+    });
+
+    $('map-empty-tip').classList.remove('show');
+    renderMarkers();
+    /* 已有保存的“我的位置”则直接恢复并以它为中心，否则自动定位 */
+    var savedLoc = loadUserLocation();
+    if (savedLoc) {
+      userLocation = savedLoc;
+      updateUserMarker(savedLoc);
+      map.setZoomAndCenter(13, savedLoc);
+    } else {
+      tryLocate();
+    }
+  }
+
+  function showMapTip(text) {
+    $('map-empty-text').textContent = text || '正在初始化地图…';
+    $('map-empty-tip').classList.add('show');
+  }
+
+  /* ================= 定位 ================= */
+  /* 定位流程：浏览器精确定位 → IP 定位（城市级，本地文件可用）→ 手动选点 */
+  function getCurrentPosition(cb) {
+    var AMap = window.AMap;
+    var tryNative = function (onFail) {
+      if (AMap && AMap.Geolocation) {
+        var geo = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 8000, zoomToAccuracy: false });
+        geo.getCurrentPosition(function (status, result) {
+          if (status === 'complete' && result && result.position) {
+            userLocation = [result.position.getLng(), result.position.getLat()];
+            setUserLocation(userLocation);
+            cb(userLocation, 'gps');
+          } else { onFail(); }
+        });
+      } else if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          userLocation = [pos.coords.longitude, pos.coords.latitude];
+          setUserLocation(userLocation);
+          cb(userLocation, 'gps');
+        }, function () { onFail(); }, { timeout: 8000, maximumAge: 60000 });
+      } else { onFail(); }
+    };
+    tryNative(function () { ipLocate(cb); });
+  }
+
+  /* IP 定位（仅用国内城市级接口，避免第三方库把运营商 IP 归到省会） */
+  function ipLocate(cb) {
+    locateByPconline(function (loc) {
+      if (loc) { setUserLocation(loc); cb(loc, 'ip'); return; }
+      cb(null, null);
+    });
+  }
+
+  /* IP 兜底1：太平洋网络 IP 归属地（JSONP，国内稳定）→ 高德地理编码转坐标 */
+  function locateByPconline(cb) {
+    var done = false;
+    function finish(loc) { if (!done) { done = true; cb(loc); } }
+    try {
+      var cbName = 'ipcb_' + Date.now().toString(36) + Math.floor(Math.random() * 999);
+      var s = document.createElement('script');
+      s.charset = 'GBK'; /* 该接口返回 GBK 编码，需显式声明才能正确解析中文 */
+      window[cbName] = function (data) {
+        try {
+          var city = ((data && data.pro) || '') + ((data && data.city) || '');
+          if (!city || !window.AMap || !AMap.Geocoder) { finish(null); return; }
+          var geocoder = new AMap.Geocoder({ city: '全国' });
+          geocoder.getLocation(city, function (status, result) {
+            if (status === 'complete' && result && result.geocodes && result.geocodes.length) {
+              finish([result.geocodes[0].location.getLng(), result.geocodes[0].location.getLat()]);
+            } else { finish(null); }
+          });
+        } catch (e) { finish(null); }
+      };
+      s.src = 'https://whois.pconline.com.cn/ipJson.jsp?callback=' + cbName + '&json=true';
+      s.onerror = function () { finish(null); };
+      setTimeout(function () { finish(null); }, 6000);
+      document.head.appendChild(s);
+    } catch (e) { finish(null); }
+  }
+
+  /* 地理编码结果缓存：地址 → [lng,lat]，避免重复导入相同地址反复请求高德 */
+  var GEO_CACHE_KEY = 'customer_markers_geocache_v1';
+  function loadGeoCache() {
+    try { return JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function saveGeoCache(cache) {
+    var keys = Object.keys(cache);
+    if (keys.length > 500) { /* 超过 500 条时删除最早的 200 条，防止缓存无限增长 */
+      keys.slice(0, keys.length - 300).forEach(function (k) { delete cache[k]; });
+    }
+    try { localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(cache)); } catch (e) {}
+  }
+
+  /* 进行中的地理编码请求（按地址合并：同一地址并发请求共享一次高德调用） */
+  var geoPending = {};
+  function geoFire(addr, coords) {
+    var list = geoPending[addr] || [];
+    delete geoPending[addr];
+    list.forEach(function (cb) { cb(coords ? coords.slice() : null); });
+  }
+
+  /* 纯地理编码：把地址解析为坐标，不修改“我的位置”（供“通过地址添加客户”使用）
+     高德 Key 需具备「Web服务」平台权限，否则请求失败或永不回调；
+     这里加 5 秒超时兜底，避免页面一直卡在“正在定位” */
+  function geocodeAddress(addr, cb) {
+    if (!addr) { cb(null); return; }
+    if (!window.AMap || !AMap.Geocoder) { cb(null); return; }
+    var cache = loadGeoCache();
+    if (cache[addr]) { cb(cache[addr].slice()); return; } /* 缓存命中：直接返回坐标 */
+    if (geoPending[addr]) { geoPending[addr].push(cb); return; } /* 该地址正在请求：并入等待，不重复请求 */
+    geoPending[addr] = [cb];
+    var geocoder = new AMap.Geocoder(); /* 不限定城市，全国范围搜索，避免 city 参数不合法导致失败 */
+    var done = false;
+    var timer = setTimeout(function () {
+      if (!done) { done = true; geoFire(addr, null); }
+    }, 5000);
+    geocoder.getLocation(addr, function (status, result) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (status === 'complete' && result && result.geocodes && result.geocodes.length) {
+        var loc = result.geocodes[0].location;
+        var coords = [loc.getLng(), loc.getLat()];
+        var c2 = loadGeoCache();
+        c2[addr] = coords;
+        saveGeoCache(c2);
+        geoFire(addr, coords);
+      } else { geoFire(addr, null); }
+    });
+  }
+
+  /* 输入地址精确设置我的位置（高德地理编码，乡镇级精度） */
+  function locateByAddress(addr, cb) {
+    geocodeAddress(addr, function (coords) {
+      if (coords) setUserLocation(coords);
+      cb(coords);
+    });
+  }
+
+  function locateMe(showFeedback) {
+    /* 已有“我的位置”：直接切换到以我为中心的视角，不做覆盖式重定位 */
+    if (userLocation && map) {
+      map.setZoomAndCenter(15, userLocation);
+      if (showFeedback) { toast('已切换到我的位置'); }
+      return;
+    }
+    getCurrentPosition(function (loc, source) {
+      if (loc && map) {
+        updateUserMarker(loc);
+        map.setZoomAndCenter(source === 'ip' ? 12 : 15, loc);
+        if (showFeedback) {
+          toast(source === 'ip' ? '已定位（IP 定位，城市级）；如需精确位置：设置 → 输入地址' : '已定位到当前位置');
+        }
+      } else if (showFeedback) {
+        enterManualLocate();
+      }
+    });
+  }
+
+  function tryLocate() { locateMe(false); }
+
+  /* 手动在地图上点击设置我的位置 */
+  function enterManualLocate() {
+    locateByClickMode = true;
+    $('map').style.cursor = 'crosshair';
+    toast('请在地图上点击你的位置，水滴将移动到点击处');
+  }
+
+  /* 在地图上显示/更新“我的位置”（蓝色水滴） */
+  function updateUserMarker(loc) {
+    if (!map) return;
+    if (!userMarker) {
+      userMarker = new AMap.Marker({
+        position: loc,
+        content: userDropSvg(),
+        anchor: 'bottom-center',
+        zIndex: 150,
+        title: '我的位置'
+      });
+      userMarker.setMap(map);
+    } else {
+      userMarker.setPosition(loc);
+    }
+  }
+
+  /* 客户在地图上的显示名：优先取信息中的「姓名」字段（导入表格可能把编号存为名称、真实姓名在姓名列），
+     没有则用客户名称 */
+  function customerDisplayName(c) {
+    var arr = (c.info || []);
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] && arr[i].k === '姓名' && arr[i].v) return arr[i].v;
+    }
+    return c.name;
+  }
+
+  /* ================= 标记渲染 ================= */
+  var markerCluster = null; /* 标记聚合器（菜单栏「聚合」开关开启时使用） */
+  var lastRenderMode = 'normal'; /* 最近一次渲染方式：cluster(聚合) / normal(普通合并) / spread(高倍散开)，用于缩放跨档时重渲染 */
+  var heatMap = null; /* 热力图（菜单栏「热力」开关开启时使用） */
+  var heatOn = false;
+  function updateHeatBtn() { $('btn-heat-toggle').classList.toggle('active', heatOn); }
+  /* 热力图数据随客户与状态筛选实时更新 */
+  function updateHeatData() {
+    if (!heatMap || !heatOn) return;
+    var pts = [];
+    customers.forEach(function (c) {
+      if (typeof c.lng !== 'number' || typeof c.lat !== 'number') return;
+      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return;
+      pts.push({ lng: c.lng, lat: c.lat, count: 1 });
+    });
+    try { heatMap.setDataSet({ data: pts, max: Math.max(1, Math.ceil(pts.length / 4)) }); } catch (e) {}
+  }
+  function toggleHeat() {
+    heatOn = !heatOn;
+    updateHeatBtn();
+    if (heatOn) {
+      AMap.plugin(['AMap.HeatMap'], function () {
+        if (!heatMap) heatMap = new AMap.HeatMap(map, { radius: 30, opacity: [0, 0.8] });
+        updateHeatData();
+        heatMap.show();
+      });
+    } else if (heatMap) {
+      heatMap.hide();
+    }
+  }
+  function updateClusterBtn() {
+    var on = !!(loadSettings() || {}).clusterEnabled;
+    $('btn-cluster-toggle').classList.toggle('active', on);
+  }
+  function toggleCluster() {
+    var s = loadSettings() || {};
+    s.clusterEnabled = !s.clusterEnabled;
+    saveSettings(s);
+    updateClusterBtn();
+    if (map) renderMarkers();
+    toast(s.clusterEnabled ? '已开启标记聚合：密集客户合并为数字，放大后展开为单个标记' : '已关闭标记聚合：所有标记直接显示');
+  }
+  function renderMarkers() {
+    if (!map) return;
+    /* 渲染方式：
+       - 聚合开启且 zoom<11：MarkerCluster 聚合（数字圆点）
+       - zoom≥11：一律散开显示（同位置客户各自标记+名牌），无论聚合是否开启
+       - 其余：普通模式（同位置客户合并为 1 标记 + ×N 角标） */
+    var sm = map.getZoom() >= 11;
+    var clusterOn = !!(loadSettings() || {}).clusterEnabled && !sm;
+    lastRenderMode = clusterOn ? 'cluster' : (sm ? 'spread' : 'normal');
+    if (clusterOn && window.AMap && AMap.MarkerCluster) {
+      renderMarkersClustered();
+      return;
+    }
+    if (markerCluster) { try { markerCluster.setMap(null); } catch (e) {} markerCluster = null; }
+    markers.forEach(function (m) { m.raw.setMap(null); });
+    markers = [];
+    /* 按精确坐标分组：同一位置的多个客户（如同名/同地址重复导入）只显示一个红旗 + “×N”角标，
+       避免完全重叠让用户误以为只有一个客户（聚合数字与实际客户数保持一致） */
+    var groups = {};
+    customers.forEach(function (c) {
+      if (typeof c.lng !== 'number' || typeof c.lat !== 'number') return; /* 待定位客户暂不渲染旗标 */
+      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return; /* 状态筛选：地图只显示当前状态的标记 */
+      var key = c.lng.toFixed(6) + ',' + c.lat.toFixed(6);
+      (groups[key] = groups[key] || []).push(c);
+    });
+    Object.keys(groups).forEach(function (key) {
+      var arr = groups[key];
+      var c = arr[0];
+      var n = arr.length;
+      /* 高倍放大（zoom≥11）时，同一位置的多个客户围绕中心环形散开显示，
+         每个客户都能看到自己的红旗与名牌（彻底解决重叠无法区分的问题）；
+         低倍时仍用主标记 + “×N”角标，避免地图杂乱 */
+      var spread = n > 1 && map.getZoom() >= 11;
+      if (spread) {
+        arr.forEach(function (gc, i) {
+          var ang = 2 * Math.PI * i / n - Math.PI / 2;
+          var R = 0.0006; /* 半径约 60 余米，随缩放比例在屏幕上保持可见间距 */
+          var plng = gc.lng + R * Math.cos(ang) / Math.cos(gc.lat * Math.PI / 180);
+          var plat = gc.lat + R * Math.sin(ang);
+          var m2 = new AMap.Marker({
+            position: [plng, plat],
+            title: customerDisplayName(gc),
+            content: flagSvg(STATUS_COLORS[customerStatus(gc)]),
+            anchor: 'bottom-center',
+            label: { content: '<div class="mk-label">' + esc(customerDisplayName(gc)) + '</div>', direction: 'top', offset: new AMap.Pixel(0, -12) }
+          });
+          (function (gc2) {
+            m2.on('click', function () { openInfo(gc2, m2, null); });
+          })(gc);
+          m2.setMap(map);
+          markers.push({ raw: m2, id: gc.id });
+        });
+        return;
+      }
+      var content = '<div class="mk-wrap">' + flagSvg(STATUS_COLORS[customerStatus(c)]) +
+        (n > 1 ? '<span class="mk-badge">×' + n + '</span>' : '') + '</div>';
+      var marker = new AMap.Marker({
+        position: [c.lng, c.lat],
+        title: customerDisplayName(c),
+        /* 客户标记固定不动：不开启拖拽，避免点按查看信息时误拖走红旗 */
+        content: content,
+        anchor: 'bottom-center',
+        label: { content: '<div class="mk-label">' + esc(customerDisplayName(c)) + '</div>', direction: 'top', offset: new AMap.Pixel(0, -12) }
+      });
+      marker.on('click', function () { openInfo(c, marker, n > 1 ? arr : null); });
+      marker.setMap(map);
+      markers.push({ raw: marker, id: c.id });
+    });
+    updateCount();
+    updateHeatData(); /* 数据/筛选变化时同步热力图 */
+  }
+
+  /* 聚合模式：使用高德 JS API 2.0 官方 AMap.MarkerCluster（接收 {lnglat,extData} 数据数组），
+     密集处合并成数字圆点，点击聚合点放大，点击单个标记打开客户信息窗 */
+  function renderMarkersClustered() {
+    if (markerCluster) { try { markerCluster.setMap(null); } catch (e) {} markerCluster = null; }
+    markers.forEach(function (m) { try { m.raw.setMap(null); } catch (e) {} });
+    markers = [];
+    var pts = [];
+    customers.forEach(function (c) {
+      if (typeof c.lng !== 'number' || typeof c.lat !== 'number') return;
+      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return;
+      pts.push({ lnglat: [c.lng, c.lat], extData: c, weight: 1 });
+    });
+    if (!pts.length) { updateCount(); updateHeatData(); return; }
+    try {
+      markerCluster = new AMap.MarkerCluster(map, pts, {
+        gridSize: 60,
+        renderClusterMarker: function (context) {
+          try {
+            var n = context.count;
+            var el = document.createElement('div');
+            el.className = 'mk-cluster';
+            el.textContent = n;
+            context.marker.setContent(el);
+            context.marker.setOffset(new AMap.Pixel(-18, -18));
+            context.marker.on('click', function () {
+              if (map.getZoom() < 19) map.setZoomAndCenter(map.getZoom() + 1, context.marker.getPosition(), true);
+            });
+          } catch (e) { console.error('cluster-renderClusterMarker-err', e); }
+        },
+        renderMarker: function (context) {
+          try {
+            /* context.data 为索引对象/数组（data[0] 即该标记对应的点数据，内含 extData=客户） */
+            var c = null;
+            var d = context.data;
+            if (d) {
+              var item = d[0];
+              if (item) c = item.extData || null;
+            }
+            if (!c) return;
+            context.marker.setContent(flagSvg(STATUS_COLORS[customerStatus(c)]));
+            context.marker.setAnchor('bottom-center');
+            context.marker.setLabel({ content: '<div class="mk-label">' + esc(customerDisplayName(c)) + '</div>', direction: 'top', offset: new AMap.Pixel(0, -12) });
+            context.marker.on('click', function () { openInfo(c, context.marker); });
+          } catch (e) { console.error('cluster-renderMarker-err', e); }
+        }
+      });
+    } catch (e) {
+      console.error('cluster-init-fallback', e);
+      /* 聚合初始化失败：回退为逐个直接挂载 */
+      pts.forEach(function (p) {
+        var c = p.extData;
+        var marker = new AMap.Marker({
+          position: p.lnglat,
+          content: flagSvg(STATUS_COLORS[customerStatus(c)]),
+          anchor: 'bottom-center',
+          label: { content: '<div class="mk-label">' + esc(customerDisplayName(c)) + '</div>', direction: 'top', offset: new AMap.Pixel(0, -12) }
+        });
+        marker.on('click', function () { openInfo(c, marker); });
+        marker.setMap(map);
+        markers.push({ raw: marker, id: c.id });
+      });
+    }
+    updateCount();
+    updateHeatData(); /* 数据/筛选变化时同步热力图 */
+  }
+
+  function findMarker(id) {
+    for (var i = 0; i < markers.length; i++) {
+      if (markers[i].id === id) return markers[i];
+    }
+    return null;
+  }
+
+  /* 自动生成客户默认名：客户1、客户2…… */
+  function nextCustomerName() {
+    var max = 0;
+    customers.forEach(function (c) {
+      var m = /^客户(\d+)$/.exec(c.name || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return '客户' + (max + 1);
+  }
+
+  /* 判断点击处是否已有客户标记（约 200 米内视为同一位置） */
+  function findNearCustomer(lng, lat) {
+    var near = null, best = 200;
+    customers.forEach(function (c) {
+      if (typeof c.lng !== 'number' || typeof c.lat !== 'number') return; /* 待定位客户不参与 */
+      var dLat = (c.lat - lat) * 110540;
+      var dLng = (c.lng - lng) * 111320 * Math.cos(lat * Math.PI / 180);
+      var d = Math.sqrt(dLng * dLng + dLat * dLat);
+      if (d < best) { best = d; near = c; }
+    });
+    return near;
+  }
+
+  function updateCount() {
+    $('count').textContent = '已标记 ' + customers.length + ' 个客户';
+    updateStats();
+    renderCustomerList();
+  }
+
+  /* 顶部状态统计徽章：已成交（红）/ 有意向（粉）/ 咨询过（绿） */
+  function updateStats() {
+    var counts = { dealed: 0, interested: 0, consulted: 0 };
+    customers.forEach(function (c) { counts[customerStatus(c)]++; });
+    $('stats').innerHTML = ['dealed', 'interested', 'consulted'].map(function (s) {
+      return '<span class="stat st-' + s + '"><i></i>' + STATUS_NAMES[s] + ' <b>' + counts[s] + '</b></span>';
+    }).join('');
+  }
+
+  /* 统计报表弹窗：客户总数 + 状态分布条形图 + 待定位数 */
+  function openStats() {
+    var body = $('stats-body');
+    var total = customers.length;
+    var noLoc = customers.filter(function (c) { return typeof c.lng !== 'number' || typeof c.lat !== 'number'; }).length;
+    var rows = ['dealed', 'interested', 'consulted'].map(function (s) {
+      var n = customers.filter(function (c) { return customerStatus(c) === s; }).length;
+      var pct = total ? Math.round(n / total * 100) : 0;
+      return { s: s, n: n, pct: pct };
+    });
+    var html = '<div class="st-total">客户总数 <b>' + total + '</b> 个</div>' +
+      '<div class="st-rows">' + rows.map(function (r) {
+        return '<div class="st-row">' +
+          '<span class="st-label"><span class="dot" style="background:' + STATUS_COLORS[r.s] + '"></span>' + STATUS_NAMES[r.s] + '</span>' +
+          '<div class="st-bar"><div class="st-bar-fill" style="width:' + r.pct + '%;background:' + STATUS_COLORS[r.s] + '"></div></div>' +
+          '<span class="st-num">' + r.n + ' 个 · ' + r.pct + '%</span>' +
+        '</div>';
+      }).join('') + '</div>' +
+      '<div class="st-noloc">待定位（无坐标）客户：<b>' + noLoc + '</b> 个</div>';
+    body.innerHTML = html;
+    $('stats-mask').classList.remove('hidden');
+  }
+  function closeStats() { $('stats-mask').classList.add('hidden'); }
+
+  /* ================= 客户列表侧栏 ================= */
+  function findCustomer(id) {
+    for (var i = 0; i < customers.length; i++) {
+      if (customers[i].id === id) return customers[i];
+    }
+    return null;
+  }
+
+  /* 删除客户：列表删除按钮与信息窗共用 */
+  /* ================= 回收站（误删恢复） ================= */
+  var TRASH_KEY = 'customer_markers_trash_v1';
+  function loadTrash() {
+    try { var t = JSON.parse(localStorage.getItem(TRASH_KEY) || '[]'); return Array.isArray(t) ? t : []; } catch (e) { return []; }
+  }
+  function saveTrash(t) {
+    try { localStorage.setItem(TRASH_KEY, JSON.stringify(t)); } catch (e) {}
+  }
+  /* 删除客户 → 移入回收站（可恢复），同时清理地图标记与勾选状态 */
+  function moveToTrash(c) {
+    customers = customers.filter(function (x) { return x.id !== c.id; });
+    var t = loadTrash();
+    var cp = JSON.parse(JSON.stringify(c));
+    cp.deletedAt = Date.now();
+    t.unshift(cp);
+    if (t.length > 200) t = t.slice(0, 200);
+    saveTrash(t);
+    var m = findMarker(c.id);
+    if (m) m.raw.setMap(null);
+    if (selectedIds[c.id]) delete selectedIds[c.id];
+    infoWindow.close();
+    saveData();
+    renderMarkers();
+  }
+
+  function deleteCustomerById(id) {
+    var c = findCustomer(id);
+    if (!c) return;
+    infoWindow.close();
+    var doDelete = function () {
+      moveToTrash(c);
+      toast('已删除客户（可在回收站恢复）');
+    };
+    /* 定位到该客户标记，并把确认窗锚定在标记名牌上方（不遮挡标记） */
+    if (typeof c.lng === 'number' && typeof c.lat === 'number' && map) {
+      map.setZoomAndCenter(15, [c.lng, c.lat], true);
+      setTimeout(function () {
+        showConfirmAt(c, '确定删除客户「' + c.name + '」吗？删除后可在回收站恢复。', doDelete);
+      }, 80);
+    } else {
+      showConfirm('确定删除客户「' + c.name + '」吗？删除后可在回收站恢复。', doDelete);
+    }
+  }
+
+  /* 列表副标题：显示「电话：号码」，无电话显示「无电话」；
+     待定位客户保留补位提示 */
+  function customerSub(c) {
+    if (typeof c.lng !== 'number' || typeof c.lat !== 'number') {
+      return '待定位：点击后在地图上补充位置';
+    }
+    var arr = (c.info || []).filter(function (it) { return it && it.k === '电话' && it.v; });
+    return arr.length ? '电话：' + String(arr[0].v) : '无电话';
+  }
+
+  /* 渲染客户列表（受搜索词与状态筛选约束） */
+  function renderCustomerList() {
+    if (!$('cust-list')) return;
+    var kw = ($('cust-search').value || '').trim();
+    /* 兜底：搜索框被浏览器自动填充了高德 Key 样式的值 → 直接清掉。
+       32 位十六进制（或与设置中 Key 相同）不可能是正常搜索词，误伤可忽略 */
+    if (/^[a-f0-9]{32}$/i.test(kw)) {
+      var s0 = loadSettings();
+      if (!s0 || !s0.key || kw === s0.key) {
+        $('cust-search').value = '';
+        kw = '';
+        /* 兜底清空后恢复「全部」高亮（正常输入路径由 input 事件维护） */
+        if (custFilter === 'all') {
+          Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
+            x.classList.toggle('active', x.getAttribute('data-st') === 'all');
+          });
+        }
+      }
+    }
+    kw = kw.toLowerCase();
+    var list = customers.filter(function (c) {
+      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return false;
+      if (!kw) return true;
+      var hay = (c.name || '') + ' ' + (c.info || []).map(function (it) { return (it.k || '') + (it.v || ''); }).join(' ') +
+        ' ' + (c.tags || []).join(' ');
+      return hay.toLowerCase().indexOf(kw) !== -1;
+    });
+    $('cust-count').textContent = '共 ' + list.length + ' 个';
+    if (!list.length) {
+      $('cust-list').innerHTML = '<div class="sp-empty">没有匹配的客户</div>';
+      return;
+    }
+    /* 跟进提醒：设置中开启（remindDays>0）时，超过 N 天未拜访（无拜访记录视为超期）的客户显示「未跟进」 */
+    var remindDays = 0;
+    try { remindDays = parseInt((loadSettings() || {}).remindDays, 10) || 0; } catch (e) {}
+    $('cust-list').innerHTML = list.map(function (c) {
+      var st = customerStatus(c);
+      var checked = multiMode && selectedIds[c.id] ? '✓' : '';
+      var cls = (multiMode && selectedIds[c.id]) ? 'cust-item selected' : 'cust-item';
+      var ck = multiMode ? '<span class="ck">' + checked + '</span>' : '';
+      var sub = customerSub(c);
+      var ovTag = '';
+      if (remindDays > 0) {
+        var lastT = 0;
+        (c.visits || []).forEach(function (v) { if (v && v.t > lastT) lastT = v.t; });
+        var daysGap = lastT ? Math.floor((Date.now() - lastT) / 86400000) : Infinity;
+        if (daysGap >= remindDays) ovTag = '<span class="ov-tag" title="超过 ' + remindDays + ' 天未拜访">未跟进</span>';
+      }
+      var tagHtml = (c.tags || []).slice(0, 2).map(function (t) { return '<span class="ci-tag">' + esc(t) + '</span>'; }).join('');
+      return '<div class="' + cls + '" data-id="' + c.id + '">' + ck +
+        '<span class="dot" style="background:' + STATUS_COLORS[st] + '"></span>' +
+        '<span class="ci-main"><span class="ci-name">' + esc(customerDisplayName(c)) + tagHtml + ovTag + '</span>' +
+        (sub ? '<span class="ci-sub">' + esc(sub) + '</span>' : '') + '</span>' +
+        '<span class="ci-st" style="color:' + STATUS_COLORS[st] + ';border:1px solid ' + STATUS_COLORS[st] + '55">' + STATUS_NAMES[st] + '</span>' +
+        '<button class="ci-del" data-id="' + c.id + '" type="button" title="删除该客户">✕</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ================= 多选拜访模式 ================= */
+  function updateMultiBar() {
+    var n = 0;
+    for (var k in selectedIds) { if (selectedIds[k]) n++; }
+    $('multi-info').textContent = '已选 ' + n + ' 个客户';
+    $('btn-plan-multi').disabled = n === 0;
+  }
+
+  function enterMultiMode() {
+    multiMode = !multiMode;
+    if (!multiMode) { selectedIds = {}; }
+    $('btn-multi').classList.toggle('active', multiMode);
+    $('btn-multi').textContent = multiMode ? '完成' : '选择拜访';
+    $('multi-bar').classList.toggle('hidden', !multiMode);
+    updateMultiBar();
+    renderCustomerList();
+    if (multiMode) toast('点击客户进行勾选，可多选');
+  }
+
+  function exitMultiMode() {
+    multiMode = false;
+    selectedIds = {};
+    $('btn-multi').classList.remove('active');
+    $('btn-multi').textContent = '选择拜访';
+    $('multi-bar').classList.add('hidden');
+    renderCustomerList();
+  }
+
+  /* 批量操作：获取当前勾选的客户 id 列表 */
+  function selectedIdList() {
+    var ids = [];
+    for (var k in selectedIds) { if (selectedIds[k]) ids.push(k); }
+    return ids;
+  }
+
+  /* 批量删除：确认后把全部勾选客户移入回收站 */
+  function batchDelete() {
+    var ids = selectedIdList();
+    if (!ids.length) { toast('请先勾选客户'); return; }
+    var targets = customers.filter(function (x) { return selectedIds[x.id] === true; });
+    showConfirm('确定删除选中的 ' + ids.length + ' 个客户吗？删除后可在回收站恢复。', function () {
+      var t = loadTrash();
+      targets.forEach(function (c) {
+        var cp = JSON.parse(JSON.stringify(c));
+        cp.deletedAt = Date.now();
+        t.unshift(cp);
+      });
+      if (t.length > 200) t = t.slice(0, 200);
+      saveTrash(t);
+      customers = customers.filter(function (x) { return selectedIds[x.id] !== true; });
+      selectedIds = {};
+      exitMultiMode();
+      saveData();
+      renderMarkers();
+      renderCustomerList();
+      toast('已删除 ' + ids.length + ' 个客户（可在回收站恢复）');
+    });
+  }
+
+  /* 批量改状态：弹窗选择目标状态 */
+  function openBatchStatus() {
+    var ids = selectedIdList();
+    if (!ids.length) { toast('请先勾选客户'); return; }
+    $('batch-status-info').textContent = '将把选中的 ' + ids.length + ' 个客户状态批量修改为：';
+    $('batch-status-mask').classList.remove('hidden');
+  }
+  function applyBatchStatus(s) {
+    var ids = selectedIdList();
+    var n = 0;
+    ids.forEach(function (id) {
+      var c = findCustomer(id);
+      if (c) { c.status = s; n++; }
+    });
+    $('batch-status-mask').classList.add('hidden');
+    selectedIds = {};
+    exitMultiMode();
+    saveData();
+    renderMarkers();
+    renderCustomerList();
+    toast('已将 ' + n + ' 个客户状态改为「' + STATUS_NAMES[s] + '」');
+  }
+
+  /* 平面近似距离（米），用于贪心排序，不做导航精度要求 */
+  function distApprox(a, b) {
+    var dLat = (a.lat - b.lat) * 110540;
+    var dLng = (a.lng - b.lng) * 111320 * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+    return Math.sqrt(dLng * dLng + dLat * dLat);
+  }
+
+  /* 最近邻贪心：从我的位置出发，依次选择最近的未访问客户（可接受次优解） */
+  function nearestOrder(list) {
+    var start = userLocation || [map.getCenter().getLng(), map.getCenter().getLat()];
+    var rest = list.slice();
+    var order = [];
+    var cur = { lng: start[0], lat: start[1] };
+    while (rest.length) {
+      var bestI = 0, bestD = Infinity;
+      for (var i = 0; i < rest.length; i++) {
+        var d = distApprox(cur, rest[i]);
+        if (d < bestD) { bestD = d; bestI = i; }
+      }
+      order.push(rest[bestI]);
+      cur = rest[bestI];
+      rest.splice(bestI, 1);
+    }
+    return order;
+  }
+
+  /* 开始多客户拜访规划 */
+  function planMultiRoute() {
+    var ids = [];
+    for (var k in selectedIds) { if (selectedIds[k]) ids.push(k); }
+    if (!ids.length) { toast('请先勾选客户'); return; }
+    if (!map) { toast('地图尚未加载完成'); return; }
+    var selected = ids.map(findCustomer).filter(Boolean);
+    if (selected.length > 17) { toast('一次最多规划 17 个客户（高德途经点上限）'); return; }
+    if (!userLocation) {
+      getCurrentPosition(function (loc) {
+        if (loc) updateUserMarker(loc);
+        startMultiPlan(selected);
+      });
+      return;
+    }
+    startMultiPlan(selected);
+  }
+
+  function startMultiPlan(selected) {
+    if (transport === 'transit') {
+      toast('公交暂不支持一键多客户路线，请逐段规划');
+      return;
+    }
+    multiPlan = nearestOrder(selected);
+    planEnd = null; /* 多客户模式不走单客户终点逻辑 */
+    exitMultiMode();
+    doPlan();
+  }
+
+  /* ================= 添加客户 ================= */
+  function toggleAddMode() {
+    addMode = !addMode;
+    $('btn-add').classList.toggle('active', addMode);
+    $('map').style.cursor = addMode ? 'crosshair' : '';
+    if (addMode) { toast('请在地图上点击客户所在位置'); }
+    else { pendingPoint = null; }
+  }
+
+  /* 复位添加客户相关状态（选点模式、待选点、按钮高亮） */
+  function resetAddState() {
+    addMode = false;
+    pendingPoint = null;
+    $('btn-add').classList.remove('active');
+    $('map').style.cursor = '';
+  }
+
+  /* 打开“添加客户”弹窗：未选点时显示“地址添加”，已选点时显示“选点确认” */
+  function openAddModal() {
+    $('add-addr-input').value = '';
+    $('new-customer-name').value = '';
+    var byAddr = !pendingPoint;
+    $('add-by-addr').classList.toggle('hidden', !byAddr);
+    $('btn-map-pick').classList.toggle('hidden', !byAddr);
+    $('pick-tip').classList.toggle('hidden', byAddr);
+    $('add-mask').classList.remove('hidden');
+    setTimeout(function () {
+      if (byAddr) { $('add-addr-input').focus(); }
+      else { $('new-customer-name').focus(); }
+    }, 50);
+  }
+  function closeAddModal() { $('add-mask').classList.add('hidden'); }
+
+  function confirmAdd() {
+    if (!pendingPoint) { toast('请先在地图上选择位置'); return; }
+    var name = $('new-customer-name').value.trim() || nextCustomerName();
+    var c = { id: uid(), name: name, lng: pendingPoint[0], lat: pendingPoint[1], status: 'consulted', info: [] };
+    customers.push(c);
+    saveData();
+    closeAddModal();
+    resetAddState();
+    renderMarkers();
+    var m = findMarker(c.id);
+    if (m) openInfo(c, m.raw);
+    toast('已添加客户「' + name + '」');
+  }
+
+  /* ================= 信息窗 ================= */
+  /* 固定条目：姓名 / 电话 / 地址 —— 不可删除、不可重复添加，只能编辑值 */
+  var FIXED_INFO_KEYS = ['姓名', '电话', '地址'];
+  function isFixedInfoKey(k) { return k === '姓名' || k === '电话' || k === '地址'; }
+  /* 读取固定条目的值：优先取 info 中对应键，姓名回退到 c.name */
+  function fixedInfoVal(c, key) {
+    var arr = c.info || [];
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] && arr[i].k === key) return arr[i].v;
+    }
+    if (key === '姓名') return c.name || '';
+    return '';
+  }
+  function buildInfoHtml(c, groupArr) {
+    /* 同位置重叠客户清单：让用户一眼看到该位置的 N 个客户分别是谁（点击名字可切换查看） */
+    var posList = '';
+    if (groupArr && groupArr.length > 1) {
+      posList = '<div class="iw-poslist">该位置共 <b>' + groupArr.length + '</b> 个客户：' +
+        groupArr.map(function (g) {
+          return '<a href="javascript:void(0)" data-cid="' + g.id + '">' + esc(customerDisplayName(g)) + '</a>';
+        }).join('、') + '</div>';
+    }
+    /* 客户标签：可添加/删除，便于分类管理（列表显示前 2 个标签，搜索可匹配标签） */
+    var tagsHtml = (c.tags || []).map(function (t) {
+      return '<span class="iw-tag">' + esc(t) + '<b data-role="tagdel" data-tag="' + esc(t) + '">×</b></span>';
+    }).join('');
+    var fixedRows = FIXED_INFO_KEYS.map(function (k) {
+      return '<div class="iw-row iw-fixed" data-key="' + k + '">' +
+        '<span class="iw-key">' + k + '</span>' +
+        '<input data-role="ev" placeholder="' + (k === '地址' ? '地址（用于定位）' : '内容') + '" value="' + esc(fixedInfoVal(c, k)) + '">' +
+      '</div>';
+    }).join('');
+    var restRows = '';
+    (c.info || []).forEach(function (it, i) {
+      if (!it || isFixedInfoKey(it.k)) return;
+      restRows += '<div class="iw-row" data-i="' + i + '">' +
+        '<input data-role="ek" placeholder="条目，如：电话" value="' + esc(it.k) + '">' +
+        '<input data-role="ev" placeholder="内容" value="' + esc(it.v) + '">' +
+        '<button class="iw-del" data-role="del" type="button" title="删除该条目">×</button>' +
+      '</div>';
+    });
+    var st = customerStatus(c);
+    var statusBtns = ['dealed', 'interested', 'consulted'].map(function (s) {
+      return '<button class="st-btn' + (s === st ? ' active' : '') + '" data-status="' + s + '" type="button">' +
+        '<span class="dot"></span>' + STATUS_NAMES[s] + '</button>';
+    }).join('');
+    var visits = c.visits || [];
+    var visitsHtml = '<div class="iw-sub" style="margin-top:10px">拜访记录（' + visits.length + '）</div>' +
+      '<div class="iw-visit-list" data-role="visitlist">' +
+      (visits.length
+        ? visits.map(function (v, vi) {
+            return '<div class="iw-visit">' +
+              '<span class="iv-time">' + fmtVisitTime(v.t) + '</span>' +
+              '<span class="iv-note">' + esc(v.note) + '</span>' +
+              '<button class="iv-del" data-role="vdel" data-i="' + vi + '" type="button" title="删除该条记录">×</button>' +
+            '</div>';
+          }).join('')
+        : '<div class="iw-novisit">暂无拜访记录</div>') +
+      '</div>' +
+      '<div class="iw-visit-add">' +
+        '<input data-role="vnote" placeholder="记录本次拜访 / 跟进情况…" maxlength="200">' +
+        '<button data-role="vadd" type="button">记录</button>' +
+      '</div>';
+    return '<div class="iw">' +
+      '<div class="iw-head"><input class="iw-name" data-role="name" value="' + esc(customerDisplayName(c)) + '" placeholder="客户名称" maxlength="30"></div>' +
+      posList +
+      '<div class="iw-tags">' +
+        '<span class="iw-tags-label">标签</span>' +
+        '<div class="iw-tags-box">' + (tagsHtml || '<span class="iw-tags-empty">无</span>') + '</div>' +
+        '<input data-role="taginput" placeholder="输入后回车添加" maxlength="10" autocomplete="off">' +
+        '<button data-role="tagadd" type="button">＋ 标签</button>' +
+      '</div>' +
+      '<div class="iw-sub">客户状态（颜色随状态变化）</div>' +
+      '<div class="iw-status">' + statusBtns + '</div>' +
+      '<div class="iw-sub" style="margin-top:8px">客户信息（姓名 / 电话 / 地址为固定条目，其他可增删）</div>' +
+      '<div class="iw-rows">' + fixedRows + restRows + '</div>' +
+      '<button class="iw-add" data-role="add" type="button">＋ 添加条目</button>' +
+      visitsHtml +
+      '<div class="iw-actions">' +
+        '<button class="iw-go" data-role="go" type="button">到这里</button>' +
+        '<button class="iw-nav" data-role="nav" type="button">手机导航</button>' +
+        '<button class="iw-delcus" data-role="delcus" type="button">删除客户</button>' +
+        '<button class="iw-ok" data-role="ok" type="button">确定</button>' +
+        '<button class="iw-close" data-role="close" type="button">关闭</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* 一键跳转手机导航：手机端调起高德地图 App 直接导航到客户位置，电脑端打开高德网页版导航 */
+  function openMobileNav(c) {
+    if (typeof c.lng !== 'number' || typeof c.lat !== 'number') { toast('该客户尚未定位，无法导航'); return; }
+    var name = encodeURIComponent(customerDisplayName(c) || '客户');
+    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    var url = 'https://uri.amap.com/navigation?to=' + c.lng + ',' + c.lat + ',' + name +
+      '&mode=car&coordinate=gaode' + (isMobile ? '&callnative=1' : '');
+    window.open(url, '_blank');
+  }
+
+  function openInfo(c, marker, groupArr) {
+    if (!infoWindow) return;
+    var content = document.createElement('div');
+    content.innerHTML = buildInfoHtml(c, groupArr);
+    infoWindow.setContent(content);
+    infoWindow.open(map, [c.lng, c.lat]);
+    bindInfoEvents(c, marker, content, groupArr);
+  }
+
+  /* 定位到某个客户：立即以该客户标记为地图中心并打开信息窗。
+     注意：高德 v2.0 的 setZoomAndCenter(zoom, center, immediately, duration) 第 4 参数是
+     动画时长而非完成回调，因此用 immediately=true 立即定位；
+     打开信息窗期间临时关闭 autoMove，防止信息窗把地图中心顶偏 */
+  function focusCustomer(c, id, zoom) {
+    if (!map || !infoWindow) return;
+    infoWindow.close();
+    map.setZoomAndCenter(zoom || 15, [c.lng, c.lat], true);
+    try { infoWindow.setOptions({ autoMove: false }); } catch (e) {}
+    var m = findMarker(id);
+    openInfo(c, m ? m.raw : null); /* 聚合模式下标记由聚合器管理，findMarker 可能为空：按坐标开窗 */
+    try { infoWindow.setOptions({ autoMove: true }); } catch (e) {}
+  }
+
+  function bindInfoEvents(c, marker, content, groupArr) {
+    if (!content || !content.querySelector) return;
+
+    var nameInput = content.querySelector('[data-role="name"]');
+    var rowsBox = content.querySelector('.iw-rows');
+    var addBtn = content.querySelector('[data-role="add"]');
+    var goBtn = content.querySelector('[data-role="go"]');
+    var navBtn = content.querySelector('[data-role="nav"]');
+    var tagAddBtn = content.querySelector('[data-role="tagadd"]');
+    var tagInput = content.querySelector('[data-role="taginput"]');
+    var okBtn = content.querySelector('[data-role="ok"]');
+    var delCusBtn = content.querySelector('[data-role="delcus"]');
+    var closeBtn = content.querySelector('[data-role="close"]');
+
+    /* 同位置客户清单：点击名字切换查看该位置的其他客户 */
+    [].forEach.call(content.querySelectorAll('.iw-poslist a[data-cid]'), function (a) {
+      a.addEventListener('click', function () {
+        var g = null;
+        for (var i = 0; i < customers.length; i++) {
+          if (customers[i].id === a.getAttribute('data-cid')) { g = customers[i]; break; }
+        }
+        if (g) openInfo(g, null, groupArr);
+      });
+    });
+    /* 打开信息窗时的地址（用于判断「确定」时地址是否被修改） */
+    var origAddr = customerAddress(c);
+
+    nameInput.addEventListener('input', function () {
+      c.name = nameInput.value.trim() || '未命名客户';
+      /* 同步信息中的「姓名」条目（若有），保证地图名牌显示最新姓名 */
+      var arr = c.info || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].k === '姓名') { arr[i].v = c.name; break; }
+      }
+      if (marker) marker.setLabel({ content: '<div class="mk-label">' + esc(customerDisplayName(c)) + '</div>', direction: 'top', offset: new AMap.Pixel(0, -12) });
+      saveData();
+      renderCustomerList(); /* 客户列表中的名称同步 */
+    });
+
+    rowsBox.addEventListener('input', function (e) {
+      var row = e.target.closest('.iw-row');
+      if (!row) return;
+      /* 固定条目行（姓名 / 电话 / 地址）：更新 info 中对应键的值 */
+      var fkey = row.getAttribute('data-key');
+      if (fkey) {
+        var fval = row.querySelector('[data-role="ev"]').value;
+        var arr = c.info || [];
+        var found = false;
+        for (var fi = 0; fi < arr.length; fi++) {
+          if (arr[fi] && arr[fi].k === fkey) { arr[fi].v = fval; found = true; break; }
+        }
+        if (!found) arr.push({ k: fkey, v: fval });
+        if (fkey === '姓名') {
+          c.name = fval.trim() || '未命名客户';
+          if (marker) marker.setLabel({ content: '<div class="mk-label">' + esc(customerDisplayName(c)) + '</div>', direction: 'top', offset: new AMap.Pixel(0, -12) });
+        }
+        saveData();
+        renderCustomerList();
+        return;
+      }
+      /* 自定义条目：禁止新增 姓名/电话/地址 重复键 */
+      var ek = row.querySelector('[data-role="ek"]');
+      if (ek && e.target === ek && isFixedInfoKey(ek.value)) {
+        toast('「' + ek.value + '」为固定条目，请在上方固定行填写');
+        ek.value = '';
+        return;
+      }
+      var i = parseInt(row.getAttribute('data-i'), 10);
+      if (isNaN(i)) return;
+      c.info[i] = {
+        k: row.querySelector('[data-role="ek"]').value,
+        v: row.querySelector('[data-role="ev"]').value
+      };
+      saveData();
+      renderCustomerList(); /* 客户列表副标题（电话等）同步 */
+    });
+
+    rowsBox.addEventListener('click', function (e) {
+      var del = e.target.closest('[data-role="del"]');
+      if (!del) return;
+      var row = del.closest('.iw-row');
+      var i = parseInt(row.getAttribute('data-i'), 10);
+      if (!isNaN(i)) { c.info.splice(i, 1); saveData(); }
+      row.remove();
+      reindexRows(rowsBox, c);
+    });
+
+    addBtn.addEventListener('click', function () {
+      c.info.push({ k: '', v: '' });
+      saveData();
+      var empty = rowsBox.querySelector('.iw-empty');
+      if (empty) empty.remove();
+      rowsBox.insertAdjacentHTML('beforeend',
+        '<div class="iw-row" data-i="' + (c.info.length - 1) + '">' +
+        '<input data-role="ek" placeholder="条目，如：电话">' +
+        '<input data-role="ev" placeholder="内容">' +
+        '<button class="iw-del" data-role="del" type="button" title="删除该条目">×</button></div>');
+      var last = rowsBox.lastElementChild;
+      if (last && last.querySelector) last.querySelector('[data-role="ek"]').focus();
+    });
+
+    /* 拜访记录：记录一条（当前时间 + 备注）或删除某条，刷新信息窗 */
+    var vaddBtn = content.querySelector('[data-role="vadd"]');
+    var vnoteInput = content.querySelector('[data-role="vnote"]');
+    var vlistBox = content.querySelector('[data-role="visitlist"]');
+    if (vaddBtn) {
+      vaddBtn.addEventListener('click', function () {
+        var note = (vnoteInput.value || '').trim();
+        if (!note) { toast('请先填写拜访备注'); return; }
+        (c.visits = c.visits || []).push({ t: Date.now(), note: note });
+        saveData();
+        openInfo(c, marker); /* 重建信息窗，展示最新记录 */
+      });
+    }
+    if (vlistBox) {
+      vlistBox.addEventListener('click', function (e) {
+        var del = e.target.closest('[data-role="vdel"]');
+        if (!del) return;
+        var i = parseInt(del.getAttribute('data-i'), 10);
+        if (!isNaN(i) && c.visits) { c.visits.splice(i, 1); saveData(); openInfo(c, marker); }
+      });
+    }
+
+    goBtn.addEventListener('click', function () { planRoute(c); });
+    navBtn.addEventListener('click', function () { openMobileNav(c); });
+
+    /* 标签：添加（按钮/回车）与删除 */
+    var refreshTags = function () { openInfo(c, marker, groupArr); };
+    var addTag = function () {
+      var v = (tagInput.value || '').trim();
+      if (!v) return;
+      if (!c.tags) c.tags = [];
+      if (c.tags.indexOf(v) < 0) c.tags.push(v);
+      tagInput.value = '';
+      saveData();
+      renderCustomerList();
+      refreshTags();
+    };
+    tagAddBtn.addEventListener('click', addTag);
+    tagInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+    });
+    content.addEventListener('click', function (e) {
+      var d = e.target.closest('[data-role="tagdel"]');
+      if (!d) return;
+      var t = d.getAttribute('data-tag');
+      if (c.tags) c.tags = c.tags.filter(function (x) { return x !== t; });
+      saveData();
+      renderCustomerList();
+      refreshTags();
+    });
+
+    /* 确定：信息已实时保存；若地址被修改，则用新地址重新定位——
+       在新地址重新生成标记并移除旧标记 */
+    okBtn.addEventListener('click', function () {
+      var addrVal = '';
+      var arr = c.info || [];
+      for (var qi = 0; qi < arr.length; qi++) {
+        if (arr[qi] && arr[qi].k === '地址') { addrVal = arr[qi].v || ''; break; }
+      }
+      if (addrVal && addrVal !== origAddr) {
+        if (!map) { toast('地图尚未就绪，请稍后再试'); return; }
+        toast('正在按新地址定位…');
+        geocodeAddress(addrVal, function (coords) {
+          if (!coords) { toast('新地址解析失败，请检查地址是否完整'); return; }
+          c.lng = coords[0];
+          c.lat = coords[1];
+          saveData();
+          renderMarkers(); /* 重建全部标记：旧位置标记移除，新地址生成新标记 */
+          infoWindow.close();
+          map.setZoomAndCenter(15, [c.lng, c.lat], true);
+          toast('已按新地址更新客户位置');
+        });
+      } else {
+        /* 地址未修改（或为空）：仅确认保存并关闭 */
+        saveData();
+        infoWindow.close();
+        toast(addrVal ? '已保存客户信息' : '已保存客户信息（未填写地址）');
+      }
+    });
+
+    /* 客户状态切换：已成交=红 / 有意向=粉 / 咨询过=绿，旗标颜色实时变化 */
+    Array.prototype.forEach.call(content.querySelectorAll('.st-btn'), function (b) {
+      b.addEventListener('click', function () {
+        var s = b.getAttribute('data-status');
+        if (!s || s === customerStatus(c)) return;
+        c.status = s;
+        saveData();
+        renderMarkers();
+        var nm = findMarker(c.id);
+        openInfo(c, nm ? nm.raw : null); /* 状态切换后重开信息窗（聚合模式下 marker 可能为空） */
+        toast('已标记为「' + STATUS_NAMES[s] + '」');
+      });
+    });
+
+    delCusBtn.addEventListener('click', function () {
+      showConfirm('确定删除客户「' + c.name + '」吗？删除后可在回收站恢复。', function () {
+        moveToTrash(c);
+        toast('已删除客户（可在回收站恢复）');
+      });
+    });
+    closeBtn.addEventListener('click', function () { infoWindow.close(); });
+  }
+
+  function reindexRows(rowsBox, c) {
+    /* 固定条目（姓名/电话/地址）在 info 中占位但不在自定义行内，
+       因此自定义行按 info 中「非固定键条目」的真实索引重新编号 */
+    var restIdx = 0;
+    var arr = (c && c.info) || [];
+    Array.prototype.forEach.call(rowsBox.querySelectorAll('.iw-row[data-i]'), function (row) {
+      while (restIdx < arr.length) {
+        var it = arr[restIdx];
+        restIdx++;
+        if (it && !isFixedInfoKey(it.k)) break;
+      }
+      row.setAttribute('data-i', restIdx - 1);
+    });
+  }
+
+  /* ================= 路线规划 ================= */
+  var MODE_NAMES = { driving: '驾车', walking: '步行', riding: '骑行', transit: '公交' };
+
+  function planRoute(c) {
+    if (!driving) return;
+    multiPlan = null; /* 单客户规划，退出多客户模式 */
+    planEnd = [c.lng, c.lat];
+    /* 优先以“我的位置”（蓝色水滴）为起点；未设置过才现场定位 */
+    if (userLocation) { doPlan(); return; }
+    getCurrentPosition(function (loc) {
+      if (loc) updateUserMarker(loc);
+      doPlan();
+    });
+  }
+
+  function doPlan() {
+    if (!planEnd && !multiPlan) return;
+    /* 一开始就展开左侧信息栏，保证用户必定看到 */
+    showRouteInfoLoading(transport);
+    var start = userLocation || (map.getCenter().toArray());
+    clearAllRoutes();
+    var seq = ++planSeq; /* 本次请求序号 */
+    /* 回调形式获取结果：切换交通方式/清除路线后旧请求的结果会被序号丢弃 */
+    function done(status, result, mode) {
+      if (seq !== planSeq) return;
+      if (status === 'complete') { onRouteComplete(result, mode); }
+      else { onRouteError(mode); }
+    }
+    if (multiPlan) {
+      /* 多客户拜访：起点 → 途经各客户 → 终点（途经点一次规划） */
+      if (transport === 'transit') {
+        showRouteError('transit', '公交暂不支持一键多客户路线，请逐段规划');
+        return;
+      }
+      var pts = multiPlan.map(function (c) { return [c.lng, c.lat]; });
+      var end = pts[pts.length - 1];
+      var way = pts.slice(0, -1).map(function (p) { return new AMap.LngLat(p[0], p[1]); });
+      /* 只有 1 个客户时无途经点，不传 waypoints */
+      var opts = way.length ? { waypoints: way } : {};
+      if (transport === 'walking' && walking) { walking.search(start, end, opts, function (s, r) { done(s, r, 'walking'); }); }
+      else if (transport === 'riding' && riding) { riding.search(start, end, opts, function (s, r) { done(s, r, 'riding'); }); }
+      else { driving.search(start, end, opts, function (s, r) { done(s, r, 'driving'); }); }
+      return;
+    }
+    if (transport === 'walking' && walking) { walking.search(start, planEnd, function (s, r) { done(s, r, 'walking'); }); }
+    else if (transport === 'riding' && riding) { riding.search(start, planEnd, function (s, r) { done(s, r, 'riding'); }); }
+    else if (transport === 'transit' && transfer) { transfer.search(start, planEnd, { policy: AMap.TransferPolicy.LEAST_TIME }, function (s, r) { done(s, r, 'transit'); }); }
+    else { driving.search(start, planEnd, function (s, r) { done(s, r, 'driving'); }); }
+  }
+
+  function clearAllRoutes() {
+    if (driving) driving.clear();
+    if (walking) walking.clear();
+    if (riding) riding.clear();
+    if (transfer) transfer.clear();
+  }
+
+  /* 从结果对象中解析出第一条可行路线（多级结构兜底） */
+  function firstRoute(result, mode) {
+    if (!result) return null;
+    var list = null;
+    if (mode === 'transit') {
+      list = (result.plans && result.plans.length) ? result.plans : ((result.routes && result.routes.length) ? result.routes : null);
+    } else {
+      list = (result.routes && result.routes.length) ? result.routes : ((result.plans && result.plans.length) ? result.plans : null);
+    }
+    return (Array.isArray(list) && list.length) ? list[0] : null;
+  }
+
+  function onRouteComplete(result, mode) {
+    var route = firstRoute(result, mode);
+    if (!route) {
+      toast('未找到可行路线，请调整起终点或更换交通方式');
+      showRouteError(mode, '未找到可行路线，请更换交通方式或调整位置');
+      return;
+    }
+    try {
+      var km = ((route.distance || 0) / 1000).toFixed(1);
+      var sec = mode === 'transit' ? (route.duration || 0) : (route.time || 0);
+      var min = Math.max(1, Math.round(sec / 60));
+      var startLabel = userLocation ? '我的位置' : '起点';
+      var steps = (route.steps || (mode === 'transit' ? route.segments : null) || []).map(function (s, i) {
+        var txt = (s.instruction || '').replace(/<[^>]+>/g, '');
+        return '<div class="step"><span class="idx">' + (i + 1) + '</span><span class="txt">' + esc(txt) + '</span></div>';
+      }).join('');
+      updateRouteInfo(mode, km, min, startLabel);
+      $('sp-steps').innerHTML = steps || '<div class="step">已生成路线</div>';
+      toast('路线已生成');
+    } catch (e) {
+      /* 兜底：任何字段异常也保证信息栏出现 */
+      updateRouteInfo(mode, '--', '--', userLocation ? '我的位置' : '起点');
+      $('sp-steps').innerHTML = '<div class="step">已生成路线</div>';
+    }
+  }
+
+  function onRouteError(mode) {
+    toast((MODE_NAMES[mode] || '') + '路线规划失败，请重试');
+    showRouteError(mode, (MODE_NAMES[mode] || '') + '路线规划失败，请重试');
+  }
+
+  /* ================= 左侧信息栏（可展开/缩回） ================= */
+  function openSidebar() { closeCustomerPanel(); $('side-panel').classList.remove('collapsed'); }
+  function closeSidebar() { $('side-panel').classList.add('collapsed'); }
+  function toggleSidebar() { $('side-panel').classList.toggle('collapsed'); }
+
+  /* 客户列表面板：与路线面板互斥展开 */
+  function openCustomerPanel() {
+    closeSidebar();
+    /* 用户从未主动输入过搜索词时，清掉浏览器自动填充/恢复的残留值（如 Key 误入搜索框） */
+    if (!searchTouched) { $('cust-search').value = ''; }
+    $('cust-panel').classList.remove('collapsed');
+    renderCustomerList();
+  }
+  function closeCustomerPanel() { $('cust-panel').classList.add('collapsed'); }
+  function toggleCustomerPanel() {
+    if ($('cust-panel').classList.contains('collapsed')) { openCustomerPanel(); }
+    else { closeCustomerPanel(); }
+  }
+
+  /* 规划中：展开侧边栏，显示“规划中” */
+  function showRouteInfoLoading(mode) {
+    openSidebar();
+    $('sp-empty').classList.add('hidden');
+    $('sp-modes').classList.remove('hidden');
+    $('sp-info').classList.add('hidden');
+    $('sp-summary').classList.remove('hidden');
+    if (multiPlan && multiPlan.length) {
+      $('sp-summary').innerHTML = '<div class="rs-main">正在规划 <b>' + multiPlan.length + '</b> 个客户的拜访路线…</div>';
+    } else {
+      $('sp-summary').innerHTML = '<div class="rs-main">正在规划' + (MODE_NAMES[mode] || '') + '路线…</div>';
+    }
+    $('sp-steps').innerHTML = '';
+  }
+
+  /* 时长格式化：不足 1 小时显示「X 分钟」，否则「X 小时 Y 分钟」 */
+  function fmtDuration(min) {
+    min = Math.max(1, Math.round(min));
+    if (min < 60) return min + ' 分钟';
+    var h = Math.floor(min / 60);
+    var m = min % 60;
+    return m ? h + ' 小时 ' + m + ' 分钟' : h + ' 小时';
+  }
+
+  /* 拜访记录时间格式化：2026/09/09 14:05 */
+  function fmtVisitTime(t) {
+    var d = new Date(t);
+    function p(n) { return n < 10 ? '0' + n : '' + n; }
+    return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* 规划成功：蓝色导航卡（方式/时间/公里数）+ 摘要 + 步骤 */
+  function updateRouteInfo(mode, km, min, startLabel) {
+    openSidebar();
+    $('sp-empty').classList.add('hidden');
+    $('sp-modes').classList.remove('hidden');
+    $('sp-mode').textContent = MODE_NAMES[mode] || '驾车';
+    $('sp-time').innerHTML = '约 <b>' + fmtDuration(min) + '</b>';
+    $('sp-km').innerHTML = '全程 <b>' + km + '</b> 公里';
+    $('sp-info').classList.remove('hidden');
+    $('sp-summary').classList.remove('hidden');
+    if (multiPlan && multiPlan.length) {
+      var names = multiPlan.map(function (c) { return c.name; }).join(' → ');
+      $('sp-summary').innerHTML =
+        '<div class="rs-main">拜访路线 · 途经 <b>' + multiPlan.length + '</b> 个客户</div>' +
+        '<div class="rs-order">' + esc(names) + '</div>' +
+        '<div class="rs-main" style="margin-top:6px">全程 <b>' + km + '</b> 公里 · 约 <b>' + fmtDuration(min) + '</b></div>';
+    } else {
+      $('sp-summary').innerHTML = '<div class="rs-main">从「' + esc(startLabel || '起点') + '」出发 · 全程 <b>' + km + '</b> 公里 · 约 <b>' + fmtDuration(min) + '</b></div>';
+    }
+  }
+
+  /* 规划失败 */
+  function showRouteError(mode, msg) {
+    openSidebar();
+    $('sp-empty').classList.add('hidden');
+    $('sp-modes').classList.remove('hidden');
+    $('sp-info').classList.add('hidden');
+    $('sp-summary').classList.remove('hidden');
+    $('sp-summary').innerHTML = '<div class="rs-main">' + esc(msg) + '</div>';
+    $('sp-steps').innerHTML = '';
+  }
+
+  /* 清空路线：收起侧边栏并复位为空状态 */
+  function clearRoute() {
+    planSeq++; /* 使在途的路线规划结果失效 */
+    clearAllRoutes();
+    planEnd = null;
+    multiPlan = null;
+    closeSidebar();
+    $('sp-empty').classList.remove('hidden');
+    $('sp-modes').classList.add('hidden');
+    $('sp-info').classList.add('hidden');
+    $('sp-summary').classList.add('hidden');
+    $('sp-summary').innerHTML = '';
+    $('sp-steps').innerHTML = '';
+  }
+
+  /* ================= 设置 ================= */
+  function openSettings() {
+    var s = loadSettings();
+    $('set-key').value = s ? s.key : '';
+    $('set-security').value = s ? (s.securityCode || '') : '';
+    $('set-remind').value = (s && s.remindDays) ? s.remindDays : '';
+    $('settings-mask').classList.remove('hidden');
+  }
+  function closeSettings() { $('settings-mask').classList.add('hidden'); }
+
+  /* ================= 回收站 ================= */
+  function openTrash() {
+    var t = loadTrash();
+    $('trash-count').textContent = '（' + t.length + ' 条）';
+    var box = $('trash-list');
+    if (!t.length) {
+      box.innerHTML = '<div class="tip" style="padding:24px 0; text-align:center">回收站为空，删除的客户会先到这里，可随时恢复</div>';
+    } else {
+      box.innerHTML = t.map(function (c) {
+        var st = customerStatus(c);
+        var tel = '';
+        (c.info || []).forEach(function (i) { if (i && i.k === '电话' && i.v) tel = i.v; });
+        return '<div class="trash-item">' +
+          '<div class="trash-main"><span class="trash-name">' + esc(customerDisplayName(c)) + '</span>' +
+          (tel ? '<span class="trash-tel">电话：' + esc(tel) + '</span>' : '') +
+          '<span class="trash-st" style="color:' + STATUS_COLORS[st] + '">' + STATUS_NAMES[st] + '</span></div>' +
+          '<span class="trash-time">' + fmtVisitTime(c.deletedAt) + '</span>' +
+          '<button class="trash-restore" data-id="' + c.id + '" type="button">恢复</button>' +
+          '<button class="trash-purge" data-id="' + c.id + '" type="button" title="彻底删除，不可恢复">彻底删除</button>' +
+        '</div>';
+      }).join('');
+    }
+    $('trash-mask').classList.remove('hidden');
+    $('settings-mask').classList.add('hidden'); /* 打开回收站时同时关闭设置弹窗，避免两个窗口重叠 */
+  }
+  function closeTrash() { $('trash-mask').classList.add('hidden'); }
+  function restoreTrashItem(id) {
+    var t = loadTrash();
+    var idx = -1;
+    for (var i = 0; i < t.length; i++) { if (t[i].id === id) { idx = i; break; } }
+    if (idx < 0) return;
+    var c = t[idx];
+    delete c.deletedAt;
+    customers.push(c);
+    t.splice(idx, 1);
+    saveTrash(t);
+    saveData();
+    renderMarkers();
+    renderCustomerList();
+    openTrash();
+    toast('已恢复客户「' + customerDisplayName(c) + '」');
+  }
+  function purgeTrashItem(id) {
+    var t = loadTrash().filter(function (c) { return c.id !== id; });
+    saveTrash(t);
+    openTrash();
+    toast('已彻底删除该客户');
+  }
+  function clearTrash() {
+    if (!loadTrash().length) { toast('回收站为空'); return; }
+    showConfirm('确定清空回收站吗？其中的客户将被彻底删除，无法恢复。', function () {
+      saveTrash([]);
+      openTrash();
+      toast('回收站已清空');
+    });
+  }
+
+  /* 一键备份：导出完整数据（客户 + 设置 + 我的位置）为 JSON 文件 */
+  function backupData() {
+    var userloc = null;
+    try { userloc = JSON.parse(localStorage.getItem(USER_LOC_KEY) || 'null'); } catch (e) {}
+    var data = {
+      app: 'customer-markers',
+      version: 1,
+      time: Date.now(),
+      customers: customers,
+      settings: loadSettings(),
+      userloc: userloc
+    };
+    try {
+      var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '客户标记数据备份_' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 600);
+      toast('已导出备份文件（含客户 / 设置 / 我的位置）');
+    } catch (e) {
+      toast('备份失败：' + e.message);
+    }
+  }
+
+  /* 恢复备份：读取备份 JSON，确认后覆盖当前数据 */
+  function restoreData(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        if (!data || !Array.isArray(data.customers)) throw new Error('bad format');
+        showConfirm('恢复备份将覆盖当前全部客户数据，确定继续吗？', function () {
+          customers = data.customers;
+          saveData();
+          if (data.settings) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings)); } catch (e) {} }
+          if (data.userloc) { try { setUserLocation(data.userloc); } catch (e) {} }
+          toast('已恢复备份：' + customers.length + ' 个客户');
+          location.reload();
+        });
+      } catch (e) {
+        toast('备份文件格式不正确，恢复失败');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function saveSettingsFromUI() {
+    var key = $('set-key').value.trim();
+    var sec = $('set-security').value.trim();
+    if (!key) { toast('请填写高德 Key'); return; }
+    var remindN = parseInt($('set-remind').value, 10);
+    if (isNaN(remindN) || remindN < 0) remindN = 0;
+    var cur = loadSettings() || {};
+    saveSettings({ key: key, securityCode: sec, clusterEnabled: !!cur.clusterEnabled, remindDays: remindN });
+    closeSettings();
+    if (map) { location.reload(); return; }
+    showMapTip('正在加载地图…');
+    loadMap(key, sec)
+      .then(function () { initMap(); })
+      .catch(function (err) { toast('地图加载失败：' + err.message); openSettings(); });
+  }
+
+  function importData(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var arr = JSON.parse(reader.result);
+        if (!Array.isArray(arr)) throw new Error('not array');
+        var valid = arr.filter(function (x) {
+          return x && typeof x.lng === 'number' && typeof x.lat === 'number' && x.name;
+        });
+        customers = valid;
+        saveData();
+        if (map) renderMarkers();
+        toast('已导入 ' + customers.length + ' 条客户数据');
+      } catch (e) {
+        toast('导入失败：文件格式不正确');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  /* ================= Excel / CSV 导入导出 ================= */
+  /* 按需加载 SheetJS（生成/解析 .xlsx）；失败时走 CSV 降级 */
+  function loadSheetJS(cb, onFail) {
+    if (window.XLSX) { cb(window.XLSX); return; }
+    var done = false;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = function () { if (!done) { done = true; cb(window.XLSX); } };
+    s.onerror = function () { if (!done) { done = true; onFail(); } };
+    document.head.appendChild(s);
+    setTimeout(function () { if (!done) { done = true; onFail(); } }, 8000);
+  }
+
+  /* 导出 Excel：按样板列（姓名 / 电话 / 状态 / 地址 / 其他备注）生成，
+     默认保存到项目文件夹，可在导出对话框中修改保存位置 */
+  function exportExcel() {
+    if (!customers.length) { toast('当前没有可导出的客户数据'); return; }
+    var headers = ['姓名', '电话', '状态', '地址', '其他备注'];
+    var rows = customers.map(function (c) {
+      var info = {};
+      (c.info || []).forEach(function (it) { if (it && it.k) info[it.k] = it.v || ''; });
+      /* 姓名列：优先取信息中的「姓名」（真实姓名），否则回退客户名称 */
+      var name = customerDisplayName(c);
+      var tel = info['电话'] || '';
+      /* 地址列：识别常见地址字段名（地址/详细地址/住址/所在地等） */
+      var addr = customerAddress(c);
+      /* 其他备注：排除 姓名/电话 及所有地址语义键，避免重复 */
+      var other = Object.keys(info)
+        .filter(function (k) { return k !== '电话' && k !== '姓名' && !isAddrKey(k); })
+        .filter(function (k) { return info[k]; })
+        .map(function (k) { return k + '：' + info[k]; })
+        .join('；');
+      return [name, tel, STATUS_NAMES[customerStatus(c)], addr, other];
+    });
+    checkExportServer(function (res) {
+      var dateStr = new Date().toISOString().slice(0, 10);
+      $('export-path').value = res && res.base ? res.base : (typeof exportFallbackPath === 'function' ? exportFallbackPath() : '');
+      $('export-fname').value = '客户标记数据_' + dateStr + '.xlsx';
+      $('export-hint').textContent = res && res.ok ? '将保存到：' + $('export-path').value : '未通过本地服务器打开，将改用浏览器下载（无法自定义路径）';
+      $('export-hint').classList.toggle('err', !(res && res.ok));
+      $('export-mask').classList.remove('hidden');
+      pendingExport = { headers: headers, rows: rows };
+    });
+  }
+
+  /* 探测本地服务器导出接口；返回服务器项目文件夹路径 */
+  var exportServerBase = null;
+  function checkExportServer(cb) {
+    if (exportServerBase !== null) { cb({ ok: true, base: exportServerBase }); return; }
+    fetch('/api/ping', { method: 'GET' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok && j.base) { exportServerBase = j.base; cb({ ok: true, base: j.base }); }
+        else { cb({ ok: false }); }
+      })
+      .catch(function () { cb({ ok: false }); });
+  }
+
+  /* file:// 打开时的兜底路径：从当前页面地址推导项目文件夹 */
+  function exportFallbackPath() {
+    try {
+      var p = decodeURIComponent(location.pathname || '');
+      var i = p.lastIndexOf('/');
+      return i > 0 ? p.slice(0, i) : '';
+    } catch (e) { return ''; }
+  }
+
+  /* 执行导出：SheetJS 生成 .xlsx（失败降级 .csv），优先写服务器路径，否则浏览器下载 */
+  function confirmExport() {
+    var pe = pendingExport;
+    if (!pe) return;
+    var fname = ($('export-fname').value || '').trim() || '客户标记数据.xlsx';
+    if (!/\.(xlsx|csv)$/i.test(fname)) fname += '.xlsx';
+    var fpath = ($('export-path').value || '').trim();
+    var hint = $('export-hint');
+    function writeServer(dataB64, ext) {
+      var body = { filename: fname, path: fpath, data: dataB64 };
+      fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.ok) {
+          $('export-mask').classList.add('hidden');
+          pendingExport = null;
+          toast('已导出 ' + pe.rows.length + ' 条客户数据 → ' + j.path);
+        } else {
+          hint.textContent = '导出失败：' + ((j && j.error) || '未知错误');
+          hint.classList.add('err');
+        }
+      }).catch(function () {
+        hint.textContent = '导出失败：无法连接本地服务器';
+        hint.classList.add('err');
+      });
+    }
+    function browserDownload(blob, name) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      $('export-mask').classList.add('hidden');
+      pendingExport = null;
+      toast('已导出 ' + pe.rows.length + ' 条客户数据（浏览器下载）');
+    }
+    if (exportServerBase !== null) {
+      /* 服务器可用：生成 xlsx → base64 → 写入指定路径 */
+      loadSheetJS(function (XLSX) {
+        var ws = XLSX.utils.aoa_to_sheet([pe.headers].concat(pe.rows));
+        ws['!cols'] = pe.headers.map(function (h) { return { wch: h === '其他备注' ? 26 : (h === '地址' ? 18 : 12) }; });
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '客户');
+        var b64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+        writeServer(b64, 'xlsx');
+      }, function () {
+        /* SheetJS 加载失败：降级 CSV */
+        var csv = '\ufeff' + [pe.headers].concat(pe.rows).map(function (r) {
+          return r.map(function (v) {
+            var s = String(v == null ? '' : v);
+            return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+          }).join(',');
+        }).join('\r\n');
+        var fname2 = fname.replace(/\.xlsx$/i, '.csv');
+        writeServer(btoa(unescape(encodeURIComponent(csv))), 'csv');
+        $('export-fname').value = fname2;
+      });
+    } else {
+      /* 服务器不可用（file:// 或端口未开）：浏览器下载回退 */
+      loadSheetJS(function (XLSX) {
+        var ws = XLSX.utils.aoa_to_sheet([pe.headers].concat(pe.rows));
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '客户');
+        var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        browserDownload(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fname);
+      }, function () {
+        var csv = '\ufeff' + [pe.headers].concat(pe.rows).map(function (r) {
+          return r.map(function (v) {
+            var s = String(v == null ? '' : v);
+            return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+          }).join(',');
+        }).join('\r\n');
+        browserDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), fname.replace(/\.xlsx$/i, '.csv'));
+      });
+    }
+  }
+
+  /* 导入入口：按扩展名分发（.json 走原逻辑，.xlsx/.xls 用 SheetJS，.csv 文本解析） */
+  function importCustomerFile(file) {
+    if (!file) return;
+    var name = (file.name || '').toLowerCase();
+    if (/\.json$/i.test(name)) { importData(file); return; }
+    if (/\.(xlsx|xls)$/i.test(name)) {
+      loadSheetJS(function (XLSX) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            var wb = XLSX.read(reader.result, { type: 'array' });
+            var ws = wb.Sheets[wb.SheetNames[0]];
+            var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            importFromAoa(aoa);
+          } catch (e) { toast('Excel 解析失败：文件格式不正确'); }
+        };
+        reader.readAsArrayBuffer(file);
+      }, function () { toast('Excel 解析组件加载失败，请检查网络后重试'); });
+      return;
+    }
+    if (/\.csv$/i.test(name)) {
+      var reader = new FileReader();
+      reader.onload = function () { importFromAoa(parseCsv(reader.result)); };
+      reader.readAsText(file, 'utf-8');
+      return;
+    }
+    toast('不支持的格式：请选择 .xlsx / .csv / .json 文件');
+  }
+
+  /* 简单 CSV 解析：支持双引号包裹与转义 */
+  function parseCsv(text) {
+    var rows = [], row = [], cell = '', inQ = false;
+    text = String(text == null ? '' : text).replace(/^\ufeff/, '');
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (inQ) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cell += '"'; i++; }
+          else { inQ = false; }
+        } else { cell += ch; }
+      } else if (ch === '"') { inQ = true; }
+      else if (ch === ',') { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(cell); cell = '';
+        if (row.some(function (x) { return x !== ''; })) rows.push(row);
+        row = [];
+      } else { cell += ch; }
+    }
+    row.push(cell);
+    if (row.some(function (x) { return x !== ''; })) rows.push(row);
+    return rows;
+  }
+
+  /* 把二维表（表头+数据行）转为客户并追加导入。
+     支持两种格式：
+     ① 标准表格式：第一行为表头，需含「名称 / 经度 / 纬度」（可有 状态 及其它信息列）
+     ② 横排键值对格式：每行为「字段名,值,字段名,值…」，如 姓名,张一,,电话,1111
+     无经纬度的客户导入为「待定位」，可在客户列表中点击后在地图上补充位置 */
+  function importFromAoa(aoa) {
+    if (!Array.isArray(aoa) || aoa.length < 2) { toast('导入失败：表格内容为空'); return; }
+    var header = aoa[0].map(function (h) { return String(h == null ? '' : h).trim(); });
+    function colIndex(names) {
+      for (var i = 0; i < header.length; i++) {
+        for (var j = 0; j < names.length; j++) {
+          if (header[i] === names[j]) return i;
+        }
+      }
+      return -1;
+    }
+    /* 客户名称列：按优先级显式查找——优先「姓名」列（表格可能把编号存为名称、真实姓名在姓名列） */
+    var iName = colIndex(['姓名']);
+    if (iName < 0) iName = colIndex(['客户名称']);
+    if (iName < 0) iName = colIndex(['名称']);
+    if (iName < 0) iName = colIndex(['name']);
+    var iStatus = colIndex(['状态', 'status']);
+    var iLng = colIndex(['经度', 'lng', 'longitude']);
+    var iLat = colIndex(['纬度', 'lat', 'latitude']);
+    if (iName < 0) {
+      /* 表头格式未命中 → 尝试横排键值对格式（第一行首列像字段名，且能找到姓名/名称键） */
+      var kvSample = {};
+      for (var si = 0; si + 1 < (aoa[0] || []).length; si += 2) {
+        var sk = String(aoa[0][si] == null ? '' : aoa[0][si]).trim();
+        if (sk) kvSample[sk] = true;
+      }
+      if (kvSample['姓名'] || kvSample['名称'] || kvSample['name']) {
+        importFromKeyValue(aoa);
+        return;
+      }
+      toast('导入失败：表格缺少「名称 / 经度 / 纬度」列');
+      return;
+    }
+    /* 与名称语义重复的列（名称/客户名称）也不再作为信息条目，避免副标题混乱 */
+    var skipNameCols = {};
+    ['姓名', '客户名称', '名称', 'name'].forEach(function (n) {
+      var idx = colIndex([n]);
+      if (idx >= 0 && idx !== iName) skipNameCols[idx] = true;
+    });
+    /* 状态文本 → 内部状态（见全局 mapStatusText）：兼容 已成交/成交、有意向/意向、咨询过/咨询 */
+    var imported = [], skipped = 0;
+    for (var r = 1; r < aoa.length; r++) {
+      var line = aoa[r] || [];
+      var name = String(line[iName] == null ? '' : line[iName]).trim();
+      var lng = parseFloat(line[iLng]);
+      var lat = parseFloat(line[iLat]);
+      if (!name) { skipped++; continue; }
+      var st = String(line[iStatus] == null ? '' : line[iStatus]).trim();
+      var c = {
+        id: uid(),
+        name: name,
+        lng: isNaN(lng) ? null : lng,
+        lat: isNaN(lat) ? null : lat,
+        status: mapStatusText(st) || 'consulted',
+        info: []
+      };
+      for (var h = 0; h < header.length; h++) {
+        if (h === iName || h === iStatus || h === iLng || h === iLat || skipNameCols[h]) continue;
+        var v = String(line[h] == null ? '' : line[h]).trim();
+        if (header[h] && v) c.info.push({ k: header[h], v: v });
+      }
+      imported.push(c);
+    }
+    finishImport(imported, skipped);
+  }
+
+  /* 状态文本 → 内部状态：兼容 已成交/成交、有意向/意向、咨询过/咨询 等常见写法 */
+  function mapStatusText(st) {
+    st = String(st == null ? '' : st).trim();
+    if (!st) return '';
+    if (st.indexOf('成交') !== -1) return 'dealed';
+    if (st.indexOf('意向') !== -1) return 'interested';
+    if (st.indexOf('咨询') !== -1) return 'consulted';
+    return '';
+  }
+
+  /* 横排键值对格式：每行「字段名,值,字段名,值…」 */
+  function importFromKeyValue(aoa) {
+    var skipKeys = { '姓名': 1, '名称': 1, 'name': 1, 'Name': 1, '经度': 1, '纬度': 1, 'lng': 1, 'lat': 1, 'longitude': 1, 'latitude': 1, '状态': 1, 'status': 1 };
+    var imported = [], skipped = 0;
+    for (var r = 0; r < aoa.length; r++) {
+      var line = aoa[r] || [];
+      var obj = {};
+      /* 每行是「字段名,值,字段名,值…」；表格中可能夹有空分隔列，
+         遇到空单元格直接跳过，不把它后面的值误当作键（否则电话/地址会错位丢失） */
+      for (var i = 0; i < line.length; i++) {
+        var k = String(line[i] == null ? '' : line[i]).trim();
+        if (!k) continue;
+        var v = String(line[i + 1] == null ? '' : line[i + 1]).trim();
+        obj[k] = v;
+        i++;
+      }
+      var name = obj['姓名'] || obj['名称'] || obj['name'] || obj['Name'] || '';
+      name = String(name).trim();
+      if (!name) { skipped++; continue; }
+      var lng = parseFloat(obj['经度']);
+      var lat = parseFloat(obj['纬度']);
+      var c = {
+        id: uid(),
+        name: name,
+        lng: isNaN(lng) ? null : lng,
+        lat: isNaN(lat) ? null : lat,
+        status: mapStatusText(obj['状态']) || 'consulted',
+        info: []
+      };
+      for (var k2 in obj) {
+        if (skipKeys[k2] || !obj[k2]) continue;
+        c.info.push({ k: k2, v: obj[k2] });
+      }
+      imported.push(c);
+    }
+    finishImport(imported, skipped);
+  }
+
+  /* 地址语义键名（信息窗固定「地址」行、导入识别、导出地址列共用） */
+  function isAddrKey(k) {
+    return ['地址', '详细地址', '住址', '家庭住址', '所在地', '位置', 'Address', 'address', 'ADDRESS'].indexOf(k) !== -1;
+  }
+
+  /* 提取客户信息中的地址（供导入后自动定位）；识别常见地址字段名 */
+  function customerAddress(c) {
+    var names = ['地址', '详细地址', '住址', '家庭住址', '所在地', '位置', 'Address', 'address', 'ADDRESS'];
+    var arr = (c.info || []);
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] && arr[i].k) {
+        for (var j = 0; j < names.length; j++) {
+          if (arr[i].k === names[j] && arr[i].v) return arr[i].v;
+        }
+      }
+    }
+    return '';
+  }
+
+  /* 导入落库：追加到现有客户，不覆盖；
+     没有经纬度但带「地址」的客户自动用高德地理编码定位（成功即按状态生成对应颜色标记） */
+  function finishImport(imported, skipped) {
+    if (!imported.length) { toast('导入失败：没有可导入的有效客户数据'); return; }
+    /* 去重：姓名、电话、地址三者完全相同的客户视为重复，只保留先出现的
+       （同时与已有客户比较，重复的不再导入） */
+    function infoVal(c, key) {
+      var arr = c.info || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].k === key && arr[i].v) return String(arr[i].v).trim();
+      }
+      return '';
+    }
+    function dupKey(c) {
+      return (customerDisplayName(c) || '').trim() + '\u0001' +
+             infoVal(c, '电话') + '\u0001' +
+             (customerAddress(c) || '').trim();
+    }
+    var seen = {};
+    customers.forEach(function (c) { seen[dupKey(c)] = true; });
+    var kept = [], dupN = 0;
+    imported.forEach(function (c) {
+      var k = dupKey(c);
+      if (seen[k]) { dupN++; return; }
+      seen[k] = true;
+      kept.push(c);
+    });
+    imported = kept;
+    if (!imported.length) {
+      toast('导入完成：' + dupN + ' 条客户与已有客户重复（姓名、电话、地址均相同），未导入新客户');
+      return;
+    }
+    var noLoc = imported.filter(function (c) { return typeof c.lng !== 'number' || typeof c.lat !== 'number'; });
+    customers = customers.concat(imported);
+    saveData();
+    if (map) renderMarkers();
+    renderCustomerList(); /* 导入后立即刷新列表：新客户立即出现在列表中 */
+    var msg = '已导入 ' + imported.length + ' 条客户';
+    if (dupN) msg += '（跳过 ' + dupN + ' 条重复客户）';
+    if (skipped) msg += '（跳过 ' + skipped + ' 条无效行）';
+    if (noLoc.length) {
+      var withAddr = noLoc.filter(function (c) { return customerAddress(c); });
+      var without = noLoc.length - withAddr.length;
+      if (withAddr.length) {
+        var done = 0, okN = 0;
+        toast('已导入 ' + imported.length + ' 条客户；正在按地址定位 ' + withAddr.length + ' 条…');
+        /* 并发 6 路定位：高德地理编码并发过高会被限流（并发太多会导致部分请求失败），
+           6 路并发配合失败重试可兼顾速度与成功率；每个客户失败自动重试一次；
+           已缓存过的地址直接命中缓存，秒级完成；相同地址只请求一次，其余复用结果 */
+        var queue = withAddr.slice();
+        var active = 0;
+        var CONC = 6;
+        function locateOne(c, tries, onDone) {
+          geocodeAddress(customerAddress(c), function (coords) {
+            if (!coords && tries > 1) {
+              setTimeout(function () { locateOne(c, tries - 1, onDone); }, 400);
+              return;
+            }
+            done++;
+            if (coords) {
+              c.lng = coords[0];
+              c.lat = coords[1];
+              okN++;
+              renderCustomerList(); /* 每个客户定位成功立即刷新列表：副标题从「待定位」变为「电话」 */
+              renderMarkers(); /* 每个客户定位成功立即把标记画到地图上：标记逐个出现，不用等全部定位完成 */
+              /* 把地址统一写入固定「地址」条目（信息窗固定行自动显示）：
+                 已有「地址」键则更新值；否则把第一个地址语义键更名为「地址」；都没有则新增 */
+              var aVal = customerAddress(c);
+              var aArr = c.info || [];
+              var hasAddr = false;
+              for (var ai = 0; ai < aArr.length; ai++) {
+                if (aArr[ai] && aArr[ai].k === '地址') { aArr[ai].v = aVal; hasAddr = true; break; }
+              }
+              if (!hasAddr) {
+                var merged = false;
+                for (var bi = 0; bi < aArr.length; bi++) {
+                  if (aArr[bi] && aArr[bi].k && ['详细地址', '住址', '家庭住址', '所在地', '位置', 'Address', 'address', 'ADDRESS'].indexOf(aArr[bi].k) !== -1) {
+                    aArr[bi].k = '地址'; aArr[bi].v = aVal; merged = true; break;
+                  }
+                }
+                if (!merged) aArr.push({ k: '地址', v: aVal });
+              }
+            }
+            onDone();
+          });
+        }
+        function pump() {
+          while (active < CONC && queue.length) {
+            active++;
+            locateOne(queue.shift(), 2, function () { active--; pump(); });
+          }
+          if (!active && !queue.length) {
+            saveData();
+            renderMarkers();
+            renderCustomerList(); /* 导入按地址定位完成后刷新列表：已定位客户副标题不再显示「待定位」 */
+            var failN = withAddr.length - okN;
+            var noAddrN = noLoc.length - withAddr.length;
+            var msg2 = '已导入 ' + imported.length + ' 条客户：' + okN + ' 条已按地址定位';
+            if (failN) msg2 += '；' + failN + ' 条地址解析失败（若全部失败，多为高德 Key 未开通「Web服务」权限，请到 console.amap.com 为 Key 添加 Web服务平台；若仅个别失败，可点击该客户后在地图上补充位置）';
+            if (noAddrN) msg2 += '；' + noAddrN + ' 条无地址待定位（点击列表项补充）';
+            toast(msg2);
+          }
+        }
+        pump();
+        return;
+      }
+      if (without) msg += '；其中 ' + without + ' 条待定位（无地址，点击列表项后在地图上补充位置）';
+    }
+    toast(msg);
+  }
+
+  /* ================= 全局事件 ================= */
+  function bindGlobalEvents() {
+    $('btn-add').addEventListener('click', openAddModal); /* 菜单“添加客户”：打开添加弹窗 */
+    $('btn-locate').addEventListener('click', function () { locateMe(true); });
+    $('btn-clear-route').addEventListener('click', clearRoute);
+    /* 左侧信息栏：展开 / 缩回 */
+    $('side-toggle').addEventListener('click', toggleSidebar);
+    $('sp-close').addEventListener('click', closeSidebar);
+    /* 客户列表侧栏：开关 / 搜索 / 筛选 / 点击定位 / 多选拜访 */
+    $('cust-toggle').addEventListener('click', toggleCustomerPanel);
+    $('cp-close').addEventListener('click', closeCustomerPanel);
+    /* keydown/paste 才算用户真实输入（浏览器自动填充只触发 input，不会触发这两者） */
+    /* 点击搜索框时清空：防止浏览器自动填充残留（Key/旧词）污染搜索，点击后始终是空白 */
+    $('cust-search').addEventListener('focus', function () {
+      if (this.value) {
+        this.value = '';
+        custFilter = 'all';
+        Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
+          x.classList.toggle('active', x.getAttribute('data-st') === 'all');
+        });
+        renderCustomerList();
+      }
+    });
+    $('cust-search').addEventListener('keydown', function () { searchTouched = true; });
+    $('cust-search').addEventListener('paste', function () { searchTouched = true; });
+    $('cust-search').addEventListener('input', function () {
+      /* 输入搜索词时回到「全部」状态：搜索与状态筛选互斥，避免筛选残留叠加；
+         搜索期间状态按钮不高亮（无颜色），清空搜索后恢复「全部」高亮 */
+      custFilter = 'all';
+      var kw = (this.value || '').trim();
+      Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
+        x.classList.toggle('active', !kw && x.getAttribute('data-st') === 'all');
+      });
+      renderCustomerList();
+    });
+    $('cust-filters').addEventListener('click', function (e) {
+      var b = e.target.closest('.cp-f');
+      if (!b) return;
+      custFilter = b.getAttribute('data-st');
+      Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
+        x.classList.toggle('active', x === b);
+      });
+      /* 点击状态筛选：清空搜索词（避免只显示搜索到的个别客户），并同步地图标记 */
+      $('cust-search').value = '';
+      infoWindow.close();
+      renderCustomerList();
+      renderMarkers();
+    });
+    $('cust-list').addEventListener('click', function (e) {
+      /* 点击删除按钮：删除该客户（不触发定位） */
+      var delBtn = e.target.closest('.ci-del');
+      if (delBtn) {
+        var did = delBtn.getAttribute('data-id');
+        if (did) deleteCustomerById(did);
+        return;
+      }
+      var item = e.target.closest('.cust-item');
+      if (!item) return;
+      var id = item.getAttribute('data-id');
+      var c = findCustomer(id);
+      if (!c || !map) return;
+      if (multiMode) {
+        /* 多选模式：点击仅勾选/取消，不打开信息窗 */
+        if (selectedIds[id]) { delete selectedIds[id]; }
+        else { selectedIds[id] = true; }
+        updateMultiBar();
+        renderCustomerList();
+        return;
+      }
+      /* 待定位客户：弹出补位置对话框（按地址自动定位 / 在地图上点击） */
+      if (typeof c.lng !== 'number' || typeof c.lat !== 'number') {
+        pendingLocateCustomer = c;
+        $('locate-cust-name').textContent = '客户「' + c.name + '」暂无位置，请选择一种方式补充：';
+        $('locate-addr-input').value = customerAddress(c);
+        $('locate-hint').textContent = '';
+        $('locate-hint').classList.remove('err');
+        $('locate-mask').classList.remove('hidden');
+        return;
+      }
+      /* 以该客户标记为地图中心：immediately=true 立即定位（无动画，API 无完成回调），
+         打开信息窗期间临时关闭 autoMove，避免信息窗把地图中心顶走 */
+      focusCustomer(c, id, 15);
+    });
+    $('btn-multi').addEventListener('click', enterMultiMode);
+    $('btn-multi-cancel').addEventListener('click', exitMultiMode);
+    $('btn-batch-del').addEventListener('click', batchDelete);
+    $('btn-batch-status').addEventListener('click', openBatchStatus);
+    $('btn-batch-status-cancel').addEventListener('click', function () { $('batch-status-mask').classList.add('hidden'); });
+    $('batch-status-btns').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-status]');
+      if (b) applyBatchStatus(b.getAttribute('data-status'));
+    });
+    $('btn-stats').addEventListener('click', openStats);
+    $('btn-stats-close').addEventListener('click', closeStats);
+    $('btn-plan-multi').addEventListener('click', planMultiRoute);
+    /* 客户列表面板内的导入 / 导出（Excel，支持 .xlsx/.csv/.json） */
+    $('btn-cust-export').addEventListener('click', exportExcel);
+    $('btn-cust-import').addEventListener('click', function () { $('cust-import-file').click(); });
+    $('cust-import-file').addEventListener('change', function () {
+      importCustomerFile(this.files[0]);
+      this.value = '';
+    });
+    /* 导出弹窗：取消 / 确认导出 */
+    $('btn-export-cancel').addEventListener('click', function () {
+      $('export-mask').classList.add('hidden');
+      pendingExport = null;
+    });
+    $('btn-export-confirm').addEventListener('click', confirmExport);
+    /* 点击遮罩关闭导出弹窗 */
+    $('export-mask').addEventListener('click', function (e) {
+      if (e.target === this) { this.classList.add('hidden'); pendingExport = null; }
+    });
+    /* 补位置弹窗：按地址定位 / 地图点击 / 取消 */    $('btn-locate-addr').addEventListener('click', function () {
+      var c = pendingLocateCustomer;
+      if (!c) return;
+      var addr = ($('locate-addr-input').value || '').trim();
+      if (!addr) { $('locate-hint').textContent = '请先输入客户地址'; $('locate-hint').classList.add('err'); return; }
+      var hint = $('locate-hint');
+      hint.textContent = '正在定位…';
+      hint.classList.remove('err');
+      geocodeAddress(addr, function (coords) {
+        if (!coords) {
+          hint.textContent = '地址解析失败，请检查地址是否完整，或改用地图点击';
+          hint.classList.add('err');
+          return;
+        }
+        c.lng = coords[0];
+        c.lat = coords[1];
+        /* 自动把定位用的地址写入固定「地址」条目（已有则更新，无则新增） */
+        var iArr = c.info || [];
+        var addrFound = false;
+        for (var ai = 0; ai < iArr.length; ai++) {
+          if (iArr[ai] && iArr[ai].k === '地址') { iArr[ai].v = addr; addrFound = true; break; }
+        }
+        if (!addrFound) iArr.push({ k: '地址', v: addr });
+        pendingLocateCustomer = null;
+        saveData();
+        renderMarkers();
+        renderCustomerList(); /* 补位定位成功后同步列表副标题 */
+        $('locate-mask').classList.add('hidden');
+        var cm = findMarker(c.id);
+        if (cm) { map.setZoomAndCenter(15, [c.lng, c.lat], true); openInfo(c, cm.raw); }
+        toast('已为「' + c.name + '」定位');
+      });
+    });
+    $('btn-locate-pick').addEventListener('click', function () {
+      var c = pendingLocateCustomer;
+      if (!c) return;
+      $('locate-mask').classList.add('hidden');
+      $('map').style.cursor = 'crosshair';
+      toast('请在地图上点击「' + c.name + '」的位置');
+    });
+    $('btn-locate-cancel').addEventListener('click', function () {
+      $('locate-mask').classList.add('hidden');
+      pendingLocateCustomer = null;
+    });
+    $('locate-mask').addEventListener('click', function (e) {
+      if (e.target === this) { this.classList.add('hidden'); pendingLocateCustomer = null; }
+    });
+    /* 通用确认弹窗：确定 / 取消 / 点遮罩关闭 */
+    $('btn-confirm-ok').addEventListener('click', function () {
+      var cb = confirmCallback;
+      closeConfirm();
+      if (cb) cb();
+    });
+    $('btn-confirm-cancel').addEventListener('click', closeConfirm);
+    $('confirm-mask').addEventListener('click', function (e) {
+      if (e.target === this) closeConfirm();
+    });
+    /* 交通方式切换：驾车 / 步行 / 骑行 / 公交（信息栏内） */
+    $('sp-modes').addEventListener('click', function (e) {
+      var b = e.target.closest('.mode-btn');
+      if (!b) return;
+      transport = b.getAttribute('data-mode');
+      Array.prototype.forEach.call(document.querySelectorAll('.sp-modes .mode-btn'), function (x) {
+        x.classList.toggle('active', x === b);
+      });
+      /* 单客户（planEnd）与多客户（multiPlan）模式下切换方式都重新规划 */
+      if (planEnd || multiPlan) doPlan();
+    });
+    $('btn-settings').addEventListener('click', openSettings);
+    $('btn-cluster-toggle').addEventListener('click', toggleCluster);
+    $('btn-heat-toggle').addEventListener('click', toggleHeat);
+
+    $('btn-modal-cancel').addEventListener('click', function () {
+      closeAddModal();
+      resetAddState();
+    });
+    $('btn-modal-ok').addEventListener('click', confirmAdd);
+    $('new-customer-name').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') confirmAdd();
+    });
+    /* “在地图上选点”：关闭弹窗并进入地图点选模式 */
+    $('btn-map-pick').addEventListener('click', function () {
+      closeAddModal();
+      if (!addMode) toggleAddMode();
+    });
+
+    $('btn-settings-cancel').addEventListener('click', closeSettings);
+    $('btn-settings-save').addEventListener('click', saveSettingsFromUI);
+    $('btn-backup').addEventListener('click', backupData);
+    $('btn-restore').addEventListener('click', function () { $('restore-file').click(); });
+    $('restore-file').addEventListener('change', function (e) { if (e.target.files && e.target.files[0]) restoreData(e.target.files[0]); e.target.value = ''; });
+    $('btn-trash').addEventListener('click', openTrash);
+    $('btn-trash-close').addEventListener('click', closeTrash);
+    $('btn-trash-clear').addEventListener('click', clearTrash);
+    $('trash-list').addEventListener('click', function (e) {
+      var r = e.target.closest('.trash-restore');
+      if (r) { restoreTrashItem(r.getAttribute('data-id')); return; }
+      var p = e.target.closest('.trash-purge');
+      if (p) purgeTrashItem(p.getAttribute('data-id'));
+    });
+    $('btn-settings-clear').addEventListener('click', function () {
+      showConfirm('确定清除全部客户标记数据吗？此操作不可恢复，建议先导出备份。', function () {
+        customers = [];
+        saveData();
+        if (map) renderMarkers();
+        toast('已清除全部客户数据');
+      });
+    });
+    $('btn-manual-locate').addEventListener('click', function () {
+      closeSettings();
+      enterManualLocate();
+    });
+    $('btn-addr-locate').addEventListener('click', function () {
+      var addr = $('addr-input').value.trim();
+      if (!addr) { toast('请输入地址'); return; }
+      locateByAddress(addr, function (loc) {
+        if (loc && map) {
+          updateUserMarker(loc);
+          map.setZoomAndCenter(15, loc);
+          closeSettings();
+          toast('已定位到：' + addr);
+        } else {
+          toast('地址解析失败，请尝试更完整的地址（如：山东省临沂市兰山区白沙埠镇）');
+        }
+      });
+    });
+    $('addr-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { $('btn-addr-locate').click(); }
+    });
+
+    /* 通过地址添加客户标志：解析地址 → 在该位置生成客户旗标（添加客户弹窗内） */
+    $('btn-addr-add').addEventListener('click', addCustomerByAddress);
+    $('add-addr-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { $('btn-addr-add').click(); }
+    });
+  }
+
+  function addCustomerByAddress() {
+    var addr = $('add-addr-input').value.trim();
+    if (!addr) { toast('请输入客户地址'); return; }
+    if (!map) { toast('地图尚未加载完成，请稍后再试'); return; }
+    /* 用纯地理编码解析：不会改写“我的位置”（水滴） */
+    geocodeAddress(addr, function (loc) {
+      if (!loc) {
+        toast('地址解析失败，请尝试更完整的地址（如：山东省临沂市兰山区白沙埠镇）');
+        return;
+      }
+      var name = $('new-customer-name').value.trim() || nextCustomerName();
+      /* 通过地址添加的客户：自动把地址写入固定「地址」条目，信息窗打开即显示 */
+      var c = { id: uid(), name: name, lng: loc[0], lat: loc[1], status: 'consulted', info: [{ k: '地址', v: addr }] };
+      customers.push(c);
+      saveData();
+      renderMarkers();
+      closeAddModal();
+      resetAddState();
+      /* 立即以新客户标记为中心定位并打开信息窗（setZoomAndCenter 无完成回调） */
+      focusCustomer(c, c.id, 13);
+      toast('已在「' + addr + '」添加客户「' + name + '」，状态：咨询过（绿旗）');
+    });
+  }
+
+  /* 启动 */
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  /* 本地文件方式下提醒：浏览器禁止精确定位 */
+  function checkFileProtocol() {
+    if (location.protocol === 'file:') {
+      $('file-warn').classList.remove('hidden');
+    }
+  }
+  checkFileProtocol();
+  $('file-warn-close').addEventListener('click', function () {
+    $('file-warn').classList.add('hidden');
+  });
+})();
+</script>
+</body>
+</html>
