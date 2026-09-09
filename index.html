@@ -1086,6 +1086,9 @@ button { font-family: inherit; }
 
     $('map-empty-tip').classList.remove('show');
     renderMarkers();
+    /* 打开页面后自动为「有地址但未定位」的客户按地址补定位（标记逐个出现）。
+       导入时偶发解析失败/未解析的地址，在这里自动重试补上标记 */
+    setTimeout(autoLocatePending, 1200);
     /* 已有保存的“我的位置”则直接恢复并以它为中心，否则自动定位 */
     var savedLoc = loadUserLocation();
     if (savedLoc) {
@@ -1100,6 +1103,71 @@ button { font-family: inherit; }
   function showMapTip(text) {
     $('map-empty-text').textContent = text || '正在初始化地图…';
     $('map-empty-tip').classList.add('show');
+  }
+
+  /* ============ 打开页面后自动补定位：有地址但无坐标的客户按地址地理编码 ============
+     解析失败的地址记入 localStorage（geocode_fail），避免每次打开都重复请求；
+     成功或地址变更后清除记录。用户可随时在客户面板用「按地址定位」手动重试 */
+  var GEO_FAIL_KEY = 'customer_markers_geocode_fail_v1';
+  function geoFailGet() { try { return JSON.parse(localStorage.getItem(GEO_FAIL_KEY) || '{}'); } catch (e) { return {}; } }
+  function geoFailSave(f) { try { localStorage.setItem(GEO_FAIL_KEY, JSON.stringify(f)); } catch (e) {} }
+  function isGeoFailed(addr) { return !!geoFailGet()[String(addr)]; }
+  function markGeoFailed(addr) { var f = geoFailGet(); f[String(addr)] = Date.now(); geoFailSave(f); }
+  function clearGeoFailed(addr) { var f = geoFailGet(); delete f[String(addr)]; geoFailSave(f); }
+
+  function autoLocatePending() {
+    if (!map || !window.AMap) return;
+    var noLoc = customers.filter(function (c) { return typeof c.lng !== 'number' || typeof c.lat !== 'number'; });
+    var withAddr = noLoc.filter(function (c) {
+      var a = customerAddress(c);
+      return a && !isGeoFailed(a);
+    });
+    if (!withAddr.length) return;
+    toast('正在自动定位 ' + withAddr.length + ' 个有地址的客户…');
+    var done = 0, okN = 0;
+    var queue = withAddr.slice();
+    var active = 0, CONC = 6;
+    function locateOne(c, tries, onDone) {
+      geocodeAddress(customerAddress(c), function (coords) {
+        if (!coords && tries > 1) {
+          setTimeout(function () { locateOne(c, tries - 1, onDone); }, 400);
+          return;
+        }
+        done++;
+        if (coords) {
+          c.lng = coords[0]; c.lat = coords[1]; okN++;
+          clearGeoFailed(customerAddress(c));
+          /* 把地址统一写入固定「地址」条目 */
+          var aVal = customerAddress(c);
+          var aArr = c.info || [];
+          var hasAddr = false;
+          for (var ai = 0; ai < aArr.length; ai++) {
+            if (aArr[ai] && aArr[ai].k === '地址') { aArr[ai].v = aVal; hasAddr = true; break; }
+          }
+          if (!hasAddr) aArr.push({ k: '地址', v: aVal });
+          renderCustomerList();
+          renderMarkers();
+        } else {
+          markGeoFailed(customerAddress(c));
+        }
+        onDone();
+      });
+    }
+    function pump() {
+      while (active < CONC && queue.length) {
+        active++;
+        locateOne(queue.shift(), 2, function () { active--; pump(); });
+      }
+      if (!active && !queue.length) {
+        saveData();
+        renderMarkers();
+        renderCustomerList();
+        var failN = withAddr.length - okN;
+        if (failN) toast('自动定位完成：' + okN + ' 个已标记；' + failN + ' 个地址解析失败（可点击该客户在地图上补充位置，或稍后在客户面板「按地址定位」重试）');
+        else toast('已自动定位 ' + okN + ' 个客户');
+      }
+    }
+    pump();
   }
 
   /* ================= 定位 ================= */
