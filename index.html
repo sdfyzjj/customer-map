@@ -610,6 +610,7 @@ button { font-family: inherit; }
         <button class="cp-f" data-st="dealed" type="button">已成交</button>
         <button class="cp-f" data-st="interested" type="button">有意向</button>
         <button class="cp-f" data-st="consulted" type="button">咨询过</button>
+        <button class="cp-f" data-st="noloct" type="button">待定位</button>
       </div>
       <div id="cust-list"></div>
       <div id="cust-io" class="cust-io">
@@ -667,6 +668,7 @@ button { font-family: inherit; }
     <h3>客户统计</h3>
     <div id="stats-body"></div>
     <div class="modal-actions" style="margin-top:16px">
+      <button id="btn-stats-noloct" class="btn" type="button">待定位客户</button>
       <span style="flex:1"></span>
       <button id="btn-stats-close" class="btn" type="button">关闭</button>
     </div>
@@ -1685,7 +1687,12 @@ button { font-family: inherit; }
     }
     kw = kw.toLowerCase();
     var list = customers.filter(function (c) {
-      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return false;
+      if (custFilter !== 'all') {
+        if (custFilter === 'noloct') {
+          /* 待定位：无坐标（未在地图上标记）的客户 */
+          if (typeof c.lng === 'number' && typeof c.lat === 'number') return false;
+        } else if (customerStatus(c) !== custFilter) return false;
+      }
       if (!kw) return true;
       var hay = (c.name || '') + ' ' + (c.info || []).map(function (it) { return (it.k || '') + (it.v || ''); }).join(' ') +
         ' ' + (c.tags || []).join(' ');
@@ -3223,6 +3230,19 @@ button { font-family: inherit; }
     });
     $('btn-stats').addEventListener('click', openStats);
     $('btn-stats-close').addEventListener('click', closeStats);
+    /* 统计弹窗「待定位客户」按钮：关闭统计，打开客户面板并筛选出未定位客户 */
+    $('btn-stats-noloct').addEventListener('click', function () {
+      closeStats();
+      openCustomerPanel();
+      custFilter = 'noloct';
+      $('cust-search').value = '';
+      Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
+        x.classList.toggle('active', x.getAttribute('data-st') === 'noloct');
+      });
+      infoWindow.close();
+      renderCustomerList();
+      renderMarkers();
+    });
     /* 添加到桌面（PWA 安装）：支持自动安装的浏览器直接弹系统安装框，其余弹手动引导 */
     var deferredPrompt = null;
     window.addEventListener('beforeinstallprompt', function (e) {
