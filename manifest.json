@@ -1,0 +1,15 @@
+{
+  "name": "聚能客户标记管理",
+  "short_name": "客户标记",
+  "description": "基于高德地图的客户标记管理系统：地图标记客户、拜访记录、路线规划、统计报表",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef0f3",
+  "theme_color": "#1E6FFF",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
