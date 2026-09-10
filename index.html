@@ -736,6 +736,22 @@ button { font-family: inherit; }
     </div>
     <label style="margin-top:14px">跟进提醒（超过 N 天未拜访的客户显示「未跟进」，0 为关闭）</label>
     <input id="set-remind" type="number" min="0" max="365" placeholder="如：30" autocomplete="off">
+    <hr class="divider">
+    <label style="margin-top:14px">云端同步（多用户共享客户信息）</label>
+    <p class="tip" style="margin:6px 0 0">填入 LeanCloud 应用信息与团队共享密码后，多台设备间可上传 / 下载客户数据。数据使用密码加密传输，密码不匹配无法解密。</p>
+    <label style="margin-top:12px">LeanCloud AppId</label>
+    <input id="set-lc-appid" type="text" placeholder="LeanCloud 控制台 → 设置 → 应用凭证 → AppID" autocomplete="off">
+    <label style="margin-top:10px">LeanCloud AppKey</label>
+    <input id="set-lc-appkey" type="text" placeholder="应用凭证中的 AppKey" autocomplete="off" style="-webkit-text-security: disc">
+    <label style="margin-top:10px">LeanCloud Server URL</label>
+    <input id="set-lc-server" type="text" placeholder="如 https://xxxxxxxx.api.lncldglobal.com" autocomplete="off" spellcheck="false">
+    <label style="margin-top:10px">共享密码（团队成员填写一致）</label>
+    <input id="set-sync-pwd" type="password" placeholder="设置 / 输入团队共享密码" autocomplete="new-password">
+    <div class="set-row">
+      <button id="btn-sync-upload" class="btn" type="button">上传到云端</button>
+      <button id="btn-sync-download" class="btn" type="button">从云端下载</button>
+    </div>
+    <div id="sync-status" class="export-hint" style="margin-top:8px"></div>
     <div class="modal-actions">
       <button id="btn-settings-clear" class="btn btn-danger left" type="button">清除全部客户数据</button>
       <button id="btn-settings-cancel" class="btn" type="button">取消</button>
@@ -2537,6 +2553,10 @@ button { font-family: inherit; }
     $('set-key').value = s ? s.key : '';
     $('set-security').value = s ? (s.securityCode || '') : '';
     $('set-remind').value = (s && s.remindDays) ? s.remindDays : '';
+    $('set-lc-appid').value = s ? (s.lcAppId || '') : '';
+    $('set-lc-appkey').value = s ? (s.lcAppKey || '') : '';
+    $('set-lc-server').value = s ? (s.lcServer || '') : '';
+    $('set-sync-pwd').value = s ? (s.syncPassword || '') : '';
     $('settings-mask').classList.remove('hidden');
   }
   function closeSettings() { $('settings-mask').classList.add('hidden'); }
@@ -2567,6 +2587,133 @@ button { font-family: inherit; }
     $('settings-mask').classList.add('hidden'); /* 打开回收站时同时关闭设置弹窗，避免两个窗口重叠 */
   }
   function closeTrash() { $('trash-mask').classList.add('hidden'); }
+
+  /* ================= 云端同步（LeanCloud + 密码加密 AES-GCM） =================
+     原理：客户数据用「共享密码」派生密钥加密后存入 LeanCloud；
+     下载时用密码解密，密码不匹配则解密失败 = 无法读取。
+     上传前先解密云端现有数据验证密码，防止错误密码覆盖团队数据。 */
+  function syncCfg() {
+    var s = loadSettings() || {};
+    return { appId: (s.lcAppId || '').trim(), appKey: (s.lcAppKey || '').trim(), server: (s.lcServer || '').trim(), pwd: s.syncPassword || '' };
+  }
+  function syncSetStatus(txt, isErr) {
+    var el = $('sync-status');
+    if (!el) return;
+    el.textContent = txt;
+    el.className = 'export-hint' + (isErr ? ' err' : '');
+  }
+  function bufToB64(buf) {
+    var bytes = new Uint8Array(buf), bin = '', CH = 0x8000;
+    for (var i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    return btoa(bin);
+  }
+  function b64ToBuf(b64) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function deriveKey(password, salt) {
+    var enc = new TextEncoder();
+    return crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']).then(function (km) {
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    });
+  }
+  function encryptData(obj, password) {
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    return deriveKey(password, salt).then(function (key) {
+      return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(JSON.stringify(obj))).then(function (ct) {
+        return { v: 1, s: bufToB64(salt), i: bufToB64(iv), c: bufToB64(ct) };
+      });
+    });
+  }
+  function decryptData(payload, password) {
+    return deriveKey(password, b64ToBuf(payload.s)).then(function (key) {
+      return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBuf(payload.i) }, key, b64ToBuf(payload.c)).then(function (pt) {
+        return JSON.parse(new TextDecoder().decode(pt));
+      });
+    });
+  }
+  /* 客户去重键：姓名 + 电话 + 地址（与导入去重一致） */
+  function customerDupKey(c) {
+    var tel = '', addr = '';
+    (c.info || []).forEach(function (i) {
+      if (i && i.k === '电话' && i.v) tel = String(i.v).trim();
+      if (i && i.k === '地址' && i.v) addr = String(i.v).trim();
+    });
+    return ((c.name || '').trim() + '\u0001' + tel + '\u0001' + addr);
+  }
+  function lcHeaders(cfg) {
+    return { 'X-LC-Id': cfg.appId, 'X-LC-Key': cfg.appKey, 'Content-Type': 'application/json' };
+  }
+  function lcGetRecord(cfg) {
+    return fetch(cfg.server + '/1.1/classes/CustomerSync?limit=1&order=-updatedAt', { headers: lcHeaders(cfg) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { return j && j.results && j.results.length ? j.results[0] : null; });
+  }
+  function lcSaveRecord(cfg, record, isNew) {
+    var url = cfg.server + '/1.1/classes/CustomerSync' + (isNew ? '' : '/' + record.objectId);
+    return fetch(url, { method: isNew ? 'POST' : 'PUT', headers: lcHeaders(cfg), body: JSON.stringify({ data: record.data }) })
+      .then(function (r) { return r.json(); });
+  }
+  function syncUpload() {
+    var cfg = syncCfg();
+    if (!cfg.appId || !cfg.appKey || !cfg.server) { syncSetStatus('请先填写 LeanCloud AppId / AppKey / Server URL 并保存设置', true); return; }
+    if (!cfg.pwd) { syncSetStatus('请先设置共享密码', true); return; }
+    if (!customers.length) { syncSetStatus('当前没有客户数据可上传', true); return; }
+    syncSetStatus('正在加密并上传…');
+    encryptData(customers, cfg.pwd).then(function (payload) {
+      return lcGetRecord(cfg).then(function (rec) {
+        if (rec) {
+          /* 已有云端数据：先用密码解密验证（密码错误则拒绝覆盖） */
+          return decryptData(rec.data, cfg.pwd).then(function () {
+            return lcSaveRecord(cfg, { objectId: rec.objectId, data: payload }, false).then(function () {
+              syncSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
+            });
+          }, function () {
+            syncSetStatus('上传失败：共享密码与云端数据不匹配，无法覆盖', true);
+            throw new Error('pwd-mismatch');
+          });
+        }
+        return lcSaveRecord(cfg, { data: payload }, true).then(function () {
+          syncSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
+        });
+      });
+    }).catch(function (e) {
+      if (e && e.message !== 'pwd-mismatch') syncSetStatus('上传失败：' + (e && e.message ? e.message : '网络或配置错误，请检查 AppId / AppKey / Server URL'), true);
+    });
+  }
+  function syncDownload() {
+    var cfg = syncCfg();
+    if (!cfg.appId || !cfg.appKey || !cfg.server) { syncSetStatus('请先填写 LeanCloud AppId / AppKey / Server URL 并保存设置', true); return; }
+    if (!cfg.pwd) { syncSetStatus('请先输入共享密码', true); return; }
+    syncSetStatus('正在下载并解密…');
+    lcGetRecord(cfg).then(function (rec) {
+      if (!rec) { syncSetStatus('云端还没有数据（可先在任一设备点击「上传到云端」）'); return; }
+      return decryptData(rec.data, cfg.pwd).then(function (cloud) {
+        if (!Array.isArray(cloud)) throw new Error('云端数据格式异常');
+        /* 合并：本地 + 云端，按 姓名+电话+地址 去重，云端有而本地无的客户加入 */
+        var merged = customers.slice();
+        var seen = {};
+        merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
+        var added = 0;
+        cloud.forEach(function (c) {
+          var k = customerDupKey(c);
+          if (!seen[k]) { merged.push(c); seen[k] = true; added++; }
+        });
+        customers = merged;
+        saveData();
+        if (map) renderMarkers();
+        renderCustomerList();
+        syncSetStatus('下载成功：云端 ' + cloud.length + ' 个客户，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）');
+      }, function () {
+        syncSetStatus('下载失败：共享密码不匹配，无法解密云端数据', true);
+        throw new Error('pwd-mismatch');
+      });
+    }).catch(function (e) {
+      if (e && e.message !== 'pwd-mismatch') syncSetStatus('下载失败：' + (e && e.message ? e.message : '网络或配置错误，请检查 AppId / AppKey / Server URL'), true);
+    });
+  }
   function restoreTrashItem(id) {
     var t = loadTrash();
     var idx = -1;
@@ -2655,7 +2802,9 @@ button { font-family: inherit; }
     var remindN = parseInt($('set-remind').value, 10);
     if (isNaN(remindN) || remindN < 0) remindN = 0;
     var cur = loadSettings() || {};
-    saveSettings({ key: key, securityCode: sec, clusterEnabled: !!cur.clusterEnabled, remindDays: remindN });
+    saveSettings({ key: key, securityCode: sec, clusterEnabled: !!cur.clusterEnabled, remindDays: remindN,
+      lcAppId: $('set-lc-appid').value.trim(), lcAppKey: $('set-lc-appkey').value.trim(),
+      lcServer: $('set-lc-server').value.trim(), syncPassword: $('set-sync-pwd').value });
     closeSettings();
     if (map) { location.reload(); return; }
     showMapTip('正在加载地图…');
@@ -3230,6 +3379,9 @@ button { font-family: inherit; }
     });
     $('btn-stats').addEventListener('click', openStats);
     $('btn-stats-close').addEventListener('click', closeStats);
+    /* 云端同步：上传 / 下载（LeanCloud + 密码加密） */
+    $('btn-sync-upload').addEventListener('click', syncUpload);
+    $('btn-sync-download').addEventListener('click', syncDownload);
     /* 统计弹窗「待定位客户」按钮：关闭统计，打开客户面板并筛选出未定位客户 */
     $('btn-stats-noloct').addEventListener('click', function () {
       closeStats();
