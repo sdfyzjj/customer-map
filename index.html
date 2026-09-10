@@ -139,6 +139,19 @@ button { font-family: inherit; }
   display: flex; align-items: center; justify-content: center;
 }
 .sp-close:hover { background: #e5e9ef; color: #1f2329; }
+.sp-head-actions { display: flex; align-items: center; gap: 8px; }
+.sp-clear-route {
+  border: none; background: #fff1f0; color: #d54941; font-size: 12px; font-weight: 600;
+  padding: 4px 10px; border-radius: 14px; cursor: pointer; line-height: 1.5;
+}
+.sp-clear-route:hover { background: #ffe4e3; }
+.set-title { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.install-in-settings {
+  border: none; background: #f2f4f7; color: #1f2329; font-size: 12px; font-weight: 600;
+  padding: 5px 10px; border-radius: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+}
+.install-in-settings svg { width: 14px; height: 14px; }
+.install-in-settings:hover { background: #e5e9ef; }
 .sp-body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
 .sp-empty { color: #8a919f; font-size: 13px; line-height: 1.8; padding: 24px 8px; text-align: center; }
 
@@ -519,10 +532,6 @@ button { font-family: inherit; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
       <span class="label">定位到我</span>
     </button>
-    <button id="btn-clear-route" class="btn" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
-      <span class="label">清除路线</span>
-    </button>
     <button id="btn-cluster-toggle" class="btn" type="button" title="标记聚合开关：开启后密集客户合并为数字，放大后展开为单个标记">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="3"/><circle cx="5.5" cy="17.5" r="3"/><circle cx="18.5" cy="17.5" r="3"/><path d="M12 9v2M7.5 15.5l3-2.5M16.5 15.5l-3-2.5"/></svg>
       <span class="label">聚合</span>
@@ -538,10 +547,6 @@ button { font-family: inherit; }
     <button id="btn-settings" class="btn" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
       <span class="label">设置</span>
-    </button>
-    <button id="btn-install-app" class="btn" type="button" title="添加到桌面：生成应用图标，像 App 一样全屏使用">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
-      <span class="label">添加到桌面</span>
     </button>
   </div>
 </header>
@@ -572,7 +577,10 @@ button { font-family: inherit; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-9 4 6 3-4 6 7"/><circle cx="5" cy="17" r="1.6"/><circle cx="19" cy="17" r="1.6"/></svg>
         路线信息
       </span>
-      <button id="sp-close" class="sp-close" type="button" title="缩回">›</button>
+      <span class="sp-head-actions">
+        <button id="btn-clear-route" class="sp-clear-route" type="button" title="清除当前路线">清除线路</button>
+        <button id="sp-close" class="sp-close" type="button" title="缩回">›</button>
+      </span>
     </div>
     <div class="sp-body">
       <div id="sp-empty" class="sp-empty">点击客户标记上的「到这里」，<br>即可规划从你位置出发的路线<br>（支持驾车 / 步行 / 骑行 / 公交）</div>
@@ -712,7 +720,13 @@ button { font-family: inherit; }
 <!-- ===== 设置弹窗 ===== -->
 <div id="settings-mask" class="mask hidden">
   <div class="modal">
-    <h3>设置</h3>
+    <h3 class="set-title">
+      <span>设置</span>
+      <button id="btn-install-app" class="install-in-settings" type="button" title="添加到桌面：生成应用图标，像 App 一样全屏使用">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+        添加到桌面
+      </button>
+    </h3>
     <label>输入地址定位我的位置（最精确，推荐）</label>
     <div class="addr-row">
       <input id="addr-input" type="text" placeholder="如：临沂市兰山区白沙埠镇" autocomplete="off">
