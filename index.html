@@ -1724,17 +1724,33 @@ button { font-family: inherit; }
     }).join('');
   }
 
-  /* 统计报表弹窗：客户总数 + 状态分布条形图 + 待定位数 */
+  /* 统计报表弹窗：客户总数 + 状态分布条形图 + 待定位数。
+     统计范围跟随搜索框：搜索框为空 → 全部客户；搜索框有标签/关键词 → 只统计匹配的客户 */
   function openStats() {
     var body = $('stats-body');
-    var total = customers.length;
-    var noLoc = customers.filter(function (c) { return typeof c.lng !== 'number' || typeof c.lat !== 'number'; }).length;
+    var kw = ($('cust-search').value || '').trim().toLowerCase();
+    var scope = customers;
+    if (kw) {
+      var mt = '';
+      try { mt = (loadSettings() || {}).memberTag || ''; } catch (e) {}
+      scope = customers.filter(function (c) {
+        var o = (c.owner || '').trim();
+        if (!o) return false;                        /* 无标签（公共）客户不计入标签统计 */
+        if (o.toLowerCase() === kw) return true;     /* 标签精确匹配 */
+        var hay = (c.name || '') + ' ' + (c.owner || mt) + ' ' +
+          (c.info || []).map(function (it) { return (it.k || '') + (it.v || ''); }).join(' ') + ' ' +
+          (c.tags || []).join(' ');
+        return hay.toLowerCase().indexOf(kw) !== -1; /* 姓名/电话等其他关键词匹配 */
+      });
+    }
+    var total = scope.length;
+    var noLoc = scope.filter(function (c) { return typeof c.lng !== 'number' || typeof c.lat !== 'number'; }).length;
     var rows = ['dealed', 'interested', 'consulted'].map(function (s) {
-      var n = customers.filter(function (c) { return customerStatus(c) === s; }).length;
+      var n = scope.filter(function (c) { return customerStatus(c) === s; }).length;
       var pct = total ? Math.round(n / total * 100) : 0;
       return { s: s, n: n, pct: pct };
     });
-    var html = '<div class="st-total">客户总数 <b>' + total + '</b> 个</div>' +
+    var html = '<div class="st-total">客户总数 <b>' + total + '</b> 个（' + (kw ? '标签/关键词：' + kw : '全部客户') + '）</div>' +
       '<div class="st-rows">' + rows.map(function (r) {
         return '<div class="st-row">' +
           '<span class="st-label"><span class="dot" style="background:' + STATUS_COLORS[r.s] + '"></span>' + STATUS_NAMES[r.s] + '</span>' +
@@ -4118,12 +4134,12 @@ button { font-family: inherit; }
     $('btn-sync-download').addEventListener('click', syncDownload);
     $('btn-admin-upload').addEventListener('click', adminCloudUpload);
     $('btn-admin-download').addEventListener('click', adminCloudDownload);
-    /* 统计弹窗「待定位客户」按钮：关闭统计，打开客户面板并筛选出未定位客户 */
+    /* 统计弹窗「待定位客户」按钮：关闭统计，打开客户面板并筛选出未定位客户。
+       保留搜索框中的标签/关键词，使列表与统计范围一致（统计范围内待定位的客户） */
     $('btn-stats-noloct').addEventListener('click', function () {
       closeStats();
       openCustomerPanel();
       custFilter = 'noloct';
-      $('cust-search').value = '';
       Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
         x.classList.toggle('active', x.getAttribute('data-st') === 'noloct');
       });
