@@ -1769,7 +1769,11 @@ button { font-family: inherit; }
     }
     var kw = ($('cust-search').value || '').trim().toLowerCase();
     if (kw) {
-      var hay = (c.name || '') + ' ' + (c.owner || '') + ' ' +
+      /* 标签匹配口径与信息窗一致：客户 owner 优先，无则回退本机团员姓名（memberTag）——
+         本机新增/导入的客户 owner 为空，也应能通过搜索本机团员姓名找到 */
+      var mt = '';
+      try { mt = (loadSettings() || {}).memberTag || ''; } catch (e) {}
+      var hay = (c.name || '') + ' ' + (c.owner || mt) + ' ' +
         (c.info || []).map(function (it) { return (it.k || '') + (it.v || ''); }).join(' ') + ' ' +
         (c.tags || []).join(' ');
       if (hay.toLowerCase().indexOf(kw) === -1) return false;
