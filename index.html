@@ -3141,13 +3141,10 @@ button { font-family: inherit; }
             adminSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
           });
         }
-        return decryptAny(cloudPayload, cfg.pwd).then(function () {
-          return ghPutFile(cfg, b64, rec.sha).then(function () {
-            adminSetStatus('覆盖上传成功：' + customers.length + ' 个客户已替换云端');
-          });
-        }, function () {
-          adminSetStatus('覆盖失败：密码不匹配（输入团队密码或超级密码）', true);
-          throw new Error('pwd-mismatch');
+        /* 管理员覆盖上传：管理员拥有覆盖权限，直接用本机团队密码 / 超级密码重新加密替换云端
+           （即使云端被其他密码加密过、无法解密，管理员也能重置云端） */
+        return ghPutFile(cfg, b64, rec.sha).then(function () {
+          adminSetStatus('覆盖上传成功：' + customers.length + ' 个客户已替换云端（已重新加密）');
         });
       });
     }).catch(function (e) {
