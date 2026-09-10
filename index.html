@@ -774,6 +774,7 @@ button { font-family: inherit; }
     <p class="tip" style="margin:6px 0 0">上传客户数据到云端时使用此 Token；普通成员无需填写，在「云端同步」中输入共享密码即可上传 / 下载。</p>
     <label style="margin-top:14px">团队密码（云端同步共享密码）</label>
     <input id="admin-sync-pwd" type="password" placeholder="团队成员在「云端同步」中输入此密码上传 / 下载" autocomplete="new-password">
+    <input id="admin-sync-pwd2" type="password" placeholder="再次输入团队密码确认" autocomplete="new-password">
     <p class="tip" style="margin:6px 0 0">由管理员统一设置并告知团队成员；此密码用于加密云端客户数据，不会随数据同步上传，请线下告知成员。</p>
     <div class="set-row" style="margin-top:14px">
       <button id="btn-admin-pwd" class="btn" type="button">设置 / 修改管理员密码</button>
@@ -2689,6 +2690,7 @@ button { font-family: inherit; }
     $('admin-security').value = s.securityCode || '';
     $('admin-gh-token').value = s.ghToken || '';
     $('admin-sync-pwd').value = s.syncPassword || '';
+    $('admin-sync-pwd2').value = s.syncPassword || '';
     $('admin-mask').classList.remove('hidden');
   }
   function closeAdminModal() { $('admin-mask').classList.add('hidden'); }
@@ -2700,13 +2702,17 @@ button { font-family: inherit; }
     var cur = loadSettings() || {};
     var oldKey = cur.key || '';
     var oldSync = cur.syncPassword || '';
+    /* 团队密码确认校验：两次输入必须一致；都留空视为不修改（保持现有密码） */
     var newSync = $('admin-sync-pwd').value;
+    var newSync2 = $('admin-sync-pwd2').value;
+    if (newSync !== newSync2) { toast('两次密码输入不正确'); return; }
+    var saveSync = newSync !== '' ? newSync : oldSync;
     saveSettings({ key: key, securityCode: sec, ghToken: tok, clusterEnabled: !!cur.clusterEnabled,
-      remindDays: cur.remindDays || 0, syncPassword: newSync,
+      remindDays: cur.remindDays || 0, syncPassword: saveSync,
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
     /* 团队密码有变更：提示云端数据迁移（用旧密码上传一次，云端改用新密码加密） */
-    if (oldSync && newSync && oldSync !== newSync) {
+    if (oldSync && saveSync && oldSync !== saveSync) {
       toast('团队密码已更新：请到「云端同步」输入旧密码点「上传到云端」，云端数据将改用新密码加密');
     } else {
       toast('管理员配置已保存');
