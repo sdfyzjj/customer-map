@@ -2596,19 +2596,24 @@ button { font-family: inherit; }
   }
   function closeSettings() { $('settings-mask').classList.add('hidden'); }
 
-  /* ================= 管理员（密码验证 → 配置弹窗：高德 Key / 安全密钥 / GitHub Token） ================= */
-  var adminPwdStep = 'check';   /* 'check' 验证 | 'set1' 首次输入 | 'set2' 再次确认 */
+  /* ================= 管理员（密码验证 → 配置弹窗：高德 Key / 安全密钥 / GitHub Token） =================
+     管理员密码为团队统一密码：以 SHA-256 指纹形式随云端数据同步。
+     管理员设备设置后点「上传到云端」，其他设备「从云端下载」后输入同一密码即可进入。 */
+  var adminPwdStep = 'check';   /* 'check' 验证 | 'set1' 首次输入 | 'set2' 再次确认 | 'old' 修改验证旧密码 | 'new1'/'new2' 修改新密码 */
   var adminPwdTmp = '';
+  function adminPwdHashOf(pwd) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd)).then(function (b) { return bufToB64(b); });
+  }
   function openAdminPwd() {
     var s = loadSettings() || {};
-    if (!s.adminPwd) {
+    if (!s.adminPwd && !s.adminPwdHash) {
       adminPwdStep = 'set1'; adminPwdTmp = '';
       $('admin-pwd-title').textContent = '设置管理员密码';
-      $('admin-pwd-hint').textContent = '首次使用，请设置管理员密码（用于进入管理员配置）';
+      $('admin-pwd-hint').textContent = '首次使用请设置管理员密码；若团队已设置过，请先在「云端同步」中下载团队数据后输入团队密码';
     } else {
       adminPwdStep = 'check';
       $('admin-pwd-title').textContent = '管理员验证';
-      $('admin-pwd-hint').textContent = '请输入管理员密码';
+      $('admin-pwd-hint').textContent = '请输入团队管理员密码';
     }
     $('admin-pwd-input').value = '';
     $('admin-pwd-mask').classList.remove('hidden');
@@ -2619,7 +2624,7 @@ button { font-family: inherit; }
   function adminPwdEntry() {
     var s = loadSettings() || {};
     closeAdminModal();
-    if (!s.adminPwd) { openAdminPwd(); return; }   /* 未设置过：走首次设置流程 */
+    if (!s.adminPwd && !s.adminPwdHash) { openAdminPwd(); return; }   /* 未设置过：走首次设置流程 */
     adminPwdStep = 'old'; adminPwdTmp = '';
     $('admin-pwd-title').textContent = '修改管理员密码';
     $('admin-pwd-hint').textContent = '请输入当前管理员密码';
@@ -2632,18 +2637,23 @@ button { font-family: inherit; }
     if (!pwd) { toast('请输入密码'); return; }
     var s = loadSettings() || {};
     if (adminPwdStep === 'check') {
-      if (pwd === s.adminPwd) { closeAdminPwd(); openAdminModal(); }
-      else { toast('管理员密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus(); }
+      /* 从设置进入的验证：比对指纹（兼容旧明文） */
+      adminPwdHashOf(pwd).then(function (h) {
+        if (h === s.adminPwdHash || pwd === s.adminPwd) { closeAdminPwd(); openAdminModal(); }
+        else { toast('管理员密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus(); }
+      });
     } else if (adminPwdStep === 'old') {
       /* 修改密码第一步：验证当前密码 */
-      if (pwd === s.adminPwd) {
-        adminPwdStep = 'new1'; adminPwdTmp = '';
-        $('admin-pwd-title').textContent = '修改管理员密码';
-        $('admin-pwd-hint').textContent = '请输入新密码（至少 6 位）';
-        $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
-      } else {
-        toast('当前密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
-      }
+      adminPwdHashOf(pwd).then(function (h) {
+        if (h === s.adminPwdHash || pwd === s.adminPwd) {
+          adminPwdStep = 'new1'; adminPwdTmp = '';
+          $('admin-pwd-title').textContent = '修改管理员密码';
+          $('admin-pwd-hint').textContent = '请输入新密码（至少 6 位）';
+          $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
+        } else {
+          toast('当前密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
+        }
+      });
     } else if (adminPwdStep === 'set1' || adminPwdStep === 'new1') {
       /* 首次设置 or 修改：输入新密码 */
       if (pwd.length < 6) { toast('密码至少 6 位'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus(); return; }
@@ -2653,17 +2663,19 @@ button { font-family: inherit; }
       $('admin-pwd-hint').textContent = '请再次输入以确认';
       $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
     } else if (adminPwdStep === 'set2' || adminPwdStep === 'new2') {
-      /* 确认密码 */
+      /* 确认密码：保存为指纹（明文不出设备） */
       if (pwd === adminPwdTmp) {
-        s.adminPwd = pwd; saveSettings(s);
-        toast(adminPwdStep === 'set2' ? '管理员密码已设置' : '管理员密码已修改');
-        closeAdminPwd(); openAdminModal();
+        adminPwdHashOf(pwd).then(function (h) {
+          s.adminPwdHash = h; delete s.adminPwd; saveSettings(s);
+          toast((adminPwdStep === 'set2' ? '管理员密码已设置' : '管理员密码已修改') + '，记得上传到云端同步给团队');
+          closeAdminPwd(); openAdminModal();
+        });
       } else {
         toast('两次输入不一致，请重新输入');
         adminPwdStep = (adminPwdStep === 'set2') ? 'set1' : 'new1';
         adminPwdTmp = '';
         $('admin-pwd-title').textContent = (adminPwdStep === 'set1') ? '设置管理员密码' : '修改管理员密码';
-        $('admin-pwd-hint').textContent = (adminPwdStep === 'set1') ? '首次使用，请设置管理员密码（用于进入管理员配置）' : '请输入新密码（至少 6 位）';
+        $('admin-pwd-hint').textContent = (adminPwdStep === 'set1') ? '首次使用请设置管理员密码；若团队已设置过，请先在「云端同步」中下载团队数据后输入团队密码' : '请输入新密码（至少 6 位）';
         $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
       }
     }
@@ -2683,7 +2695,8 @@ button { font-family: inherit; }
     if (!key) { toast('请填写高德 Key'); return; }
     var cur = loadSettings() || {};
     saveSettings({ key: key, securityCode: sec, ghToken: tok, clusterEnabled: !!cur.clusterEnabled,
-      remindDays: cur.remindDays || 0, syncPassword: cur.syncPassword || '', adminPwd: cur.adminPwd || '' });
+      remindDays: cur.remindDays || 0, syncPassword: cur.syncPassword || '',
+      adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
     if (map) { location.reload(); return; }
     showMapTip('正在加载地图…');
@@ -2820,7 +2833,10 @@ button { font-family: inherit; }
     if (!cfg.pwd) { syncSetStatus('请先设置共享密码', true); return; }
     if (!customers.length) { syncSetStatus('当前没有客户数据可上传', true); return; }
     syncSetStatus('正在加密并上传…');
-    encryptData(customers, cfg.pwd).then(function (payload) {
+    /* 上传内容：客户列表 + 管理员密码指纹（v2 结构，供团队其他设备下载后统一管理员密码） */
+    var st = loadSettings() || {};
+    var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
+    encryptData(payloadObj, cfg.pwd).then(function (payload) {
       var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(payload)));
       return ghGetFile(cfg).then(function (rec) {
         if (rec) {
@@ -2856,21 +2872,29 @@ button { font-family: inherit; }
       try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
       if (!raw) { syncSetStatus('下载失败：云端数据格式异常', true); return; }
       return decryptData(raw, cfg.pwd).then(function (cloud) {
-        if (!Array.isArray(cloud)) throw new Error('云端数据格式异常');
+        var cloudList = null, cloudHash = '';
+        if (Array.isArray(cloud)) cloudList = cloud;                    /* 旧格式：纯客户数组 */
+        else if (cloud && Array.isArray(cloud.customers)) { cloudList = cloud.customers; cloudHash = cloud.adminPwdHash || ''; }  /* v2：客户 + 管理员密码指纹 */
+        else throw new Error('云端数据格式异常');
         /* 合并：本地 + 云端，按 姓名+电话+地址 去重，云端有而本地无的客户加入 */
         var merged = customers.slice();
         var seen = {};
         merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
         var added = 0;
-        cloud.forEach(function (c) {
+        cloudList.forEach(function (c) {
           var k = customerDupKey(c);
           if (!seen[k]) { merged.push(c); seen[k] = true; added++; }
         });
         customers = merged;
         saveData();
+        /* 同步团队管理员密码指纹（云端有则统一，覆盖本机） */
+        if (cloudHash) {
+          var st = loadSettings() || {};
+          st.adminPwdHash = cloudHash; delete st.adminPwd; saveSettings(st);
+        }
         if (map) renderMarkers();
         renderCustomerList();
-        syncSetStatus('下载成功：云端 ' + cloud.length + ' 个客户，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）');
+        syncSetStatus('下载成功：云端 ' + cloudList.length + ' 个客户，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
       }, function () {
         syncSetStatus('下载失败：共享密码不匹配，无法解密云端数据', true);
         throw new Error('pwd-mismatch');
@@ -2966,7 +2990,7 @@ button { font-family: inherit; }
     var cur = loadSettings() || {};
     saveSettings({ key: cur.key || '', securityCode: cur.securityCode || '', clusterEnabled: !!cur.clusterEnabled,
       remindDays: remindN, ghToken: cur.ghToken || '', syncPassword: cur.syncPassword || '',
-      adminPwd: cur.adminPwd || '' });
+      adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeSettings();
     toast('设置已保存');
     if (map) renderCustomerList();
