@@ -150,6 +150,10 @@ button { font-family: inherit; }
   flex: none; background: #e8f1ff; color: #1E6FFF; font-size: 11px; font-weight: 600;
   padding: 2px 8px; border-radius: 10px; white-space: nowrap;
 }
+.ci-owner {
+  display: inline-block; background: #e8f1ff; color: #1E6FFF; font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: 8px; margin-left: 5px; vertical-align: 1px; white-space: nowrap;
+}
 .set-title { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .install-in-settings {
   border: none; background: #f2f4f7; color: #1f2329; font-size: 12px; font-weight: 600;
@@ -1821,9 +1825,12 @@ button { font-family: inherit; }
         if (daysGap >= remindDays) ovTag = '<span class="ov-tag" title="超过 ' + remindDays + ' 天未拜访">未跟进</span>';
       }
       var tagHtml = (c.tags || []).slice(0, 2).map(function (t) { return '<span class="ci-tag">' + esc(t) + '</span>'; }).join('');
+      var ooTxt = (c.owner || '').trim();
+      if (!ooTxt) { try { ooTxt = ((loadSettings() || {}).memberTag || '').trim(); } catch (e) {} }
+      var ownerHtml = ooTxt ? '<span class="ci-owner" title="录入者">' + esc(ooTxt) + '</span>' : '';
       return '<div class="' + cls + '" data-id="' + c.id + '">' + ck +
         '<span class="dot" style="background:' + STATUS_COLORS[st] + '"></span>' +
-        '<span class="ci-main"><span class="ci-name">' + esc(customerDisplayName(c)) + tagHtml + ovTag + '</span>' +
+        '<span class="ci-main"><span class="ci-name">' + esc(customerDisplayName(c)) + ownerHtml + tagHtml + ovTag + '</span>' +
         (sub ? '<span class="ci-sub">' + esc(sub) + '</span>' : '') + '</span>' +
         '<span class="ci-st" style="color:' + STATUS_COLORS[st] + ';border:1px solid ' + STATUS_COLORS[st] + '55">' + STATUS_NAMES[st] + '</span>' +
         '<button class="ci-del" data-id="' + c.id + '" type="button" title="删除该客户">✕</button>' +
@@ -3425,6 +3432,7 @@ button { font-family: inherit; }
     var iStatus = colIndex(['状态', 'status']);
     var iLng = colIndex(['经度', 'lng', 'longitude']);
     var iLat = colIndex(['纬度', 'lat', 'latitude']);
+    var iOwner = colIndex(['标签', '录入者', '成员', 'owner', 'Owner', 'OWNER']);
     if (iName < 0) {
       /* 表头格式未命中 → 尝试横排键值对格式（第一行首列像字段名，且能找到姓名/名称键） */
       var kvSample = {};
@@ -3460,10 +3468,11 @@ button { font-family: inherit; }
         lng: isNaN(lng) ? null : lng,
         lat: isNaN(lat) ? null : lat,
         status: mapStatusText(st) || 'consulted',
+        owner: iOwner >= 0 ? String(line[iOwner] == null ? '' : line[iOwner]).trim() : '',
         info: []
       };
       for (var h = 0; h < header.length; h++) {
-        if (h === iName || h === iStatus || h === iLng || h === iLat || skipNameCols[h]) continue;
+        if (h === iName || h === iStatus || h === iLng || h === iLat || h === iOwner || skipNameCols[h]) continue;
         var v = String(line[h] == null ? '' : line[h]).trim();
         if (header[h] && v) c.info.push({ k: header[h], v: v });
       }
@@ -3484,7 +3493,7 @@ button { font-family: inherit; }
 
   /* 横排键值对格式：每行「字段名,值,字段名,值…」 */
   function importFromKeyValue(aoa) {
-    var skipKeys = { '姓名': 1, '名称': 1, 'name': 1, 'Name': 1, '经度': 1, '纬度': 1, 'lng': 1, 'lat': 1, 'longitude': 1, 'latitude': 1, '状态': 1, 'status': 1 };
+    var skipKeys = { '姓名': 1, '名称': 1, 'name': 1, 'Name': 1, '经度': 1, '纬度': 1, 'lng': 1, 'lat': 1, 'longitude': 1, 'latitude': 1, '状态': 1, 'status': 1, '标签': 1, '录入者': 1, '成员': 1, 'owner': 1, 'Owner': 1, 'OWNER': 1 };
     var imported = [], skipped = 0;
     for (var r = 0; r < aoa.length; r++) {
       var line = aoa[r] || [];
@@ -3509,6 +3518,7 @@ button { font-family: inherit; }
         lng: isNaN(lng) ? null : lng,
         lat: isNaN(lat) ? null : lat,
         status: mapStatusText(obj['状态']) || 'consulted',
+        owner: String(obj['标签'] || obj['录入者'] || obj['成员'] || obj['owner'] || obj['Owner'] || '').trim(),
         info: []
       };
       for (var k2 in obj) {
@@ -3557,18 +3567,36 @@ button { font-family: inherit; }
              infoVal(c, '电话') + '\u0001' +
              (customerAddress(c) || '').trim();
     }
-    var seen = {};
-    customers.forEach(function (c) { seen[dupKey(c)] = true; });
-    var kept = [], dupN = 0;
+    var seen = {}, localByKey = {};
+    customers.forEach(function (c) { var k = dupKey(c); seen[k] = true; localByKey[k] = c; });
+    var kept = [], dupN = 0, changedN = 0;
     imported.forEach(function (c) {
       var k = dupKey(c);
-      if (seen[k]) { dupN++; return; }
+      if (seen[k]) {
+        dupN++;
+        /* 成员标签变化：导入文件带「标签」列且与本地不同 → 更新本地客户的录入者标签 */
+        var local = localByKey[k];
+        var newOwner = (c.owner || '').trim();
+        if (local && newOwner && (local.owner || '').trim() !== newOwner) {
+          local.owner = newOwner;
+          changedN++;
+        }
+        return;
+      }
       seen[k] = true;
+      localByKey[k] = c;
       kept.push(c);
     });
     imported = kept;
     if (!imported.length) {
-      toast('导入完成：' + dupN + ' 条客户与已有客户重复（姓名、电话、地址均相同），未导入新客户');
+      if (changedN) {
+        saveData();
+        if (map) renderMarkers();
+        renderCustomerList();
+        toast('导入完成：' + dupN + ' 条客户重复未新增，已更新 ' + changedN + ' 个客户的成员标签');
+      } else {
+        toast('导入完成：' + dupN + ' 条客户与已有客户重复（姓名、电话、地址均相同），未导入新客户');
+      }
       return;
     }
     var noLoc = imported.filter(function (c) { return typeof c.lng !== 'number' || typeof c.lat !== 'number'; });
@@ -3577,7 +3605,7 @@ button { font-family: inherit; }
     if (map) renderMarkers();
     renderCustomerList(); /* 导入后立即刷新列表：新客户立即出现在列表中 */
     var msg = '已导入 ' + imported.length + ' 条客户';
-    if (dupN) msg += '（跳过 ' + dupN + ' 条重复客户）';
+    if (dupN) msg += '（跳过 ' + dupN + ' 条重复客户' + (changedN ? '，更新 ' + changedN + ' 个成员标签' : '') + '）';
     if (skipped) msg += '（跳过 ' + skipped + ' 条无效行）';
     if (noLoc.length) {
       var withAddr = noLoc.filter(function (c) { return customerAddress(c); });
