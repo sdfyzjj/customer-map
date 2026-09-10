@@ -838,15 +838,18 @@ button { font-family: inherit; }
     </div>
     <p class="tip" style="margin:6px 0 0">由管理员统一设置并告知团队成员；此密码用于加密云端客户数据，不会随数据同步上传，请线下告知成员。修改后点「确认」生效。</p>
     <label style="margin-top:14px">超级密码（管理员专属，团队密码忘了也能上传 / 下载）</label>
-    <div class="pwd-wrap">
-      <input id="admin-master-pwd" type="password" placeholder="设置超级密码（可选，建议与团队密码不同）" autocomplete="new-password">
-      <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-master-pwd', this)">👁</button>
+    <div class="pwd-row">
+      <div class="pwd-wrap">
+        <input id="admin-master-pwd" type="password" placeholder="超级密码" autocomplete="new-password">
+        <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-master-pwd', this)">👁</button>
+      </div>
+      <div class="pwd-wrap">
+        <input id="admin-master-pwd2" type="password" placeholder="确认密码" autocomplete="new-password">
+        <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-master-pwd2', this)">👁</button>
+      </div>
+      <button id="btn-master-pwd-confirm" class="btn" type="button">确认</button>
     </div>
-    <div class="pwd-wrap" style="margin-top:10px">
-      <input id="admin-master-pwd2" type="password" placeholder="再次输入超级密码确认" autocomplete="new-password">
-      <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-master-pwd2', this)">👁</button>
-    </div>
-    <p class="tip" style="margin:6px 0 0">设置后云端数据升级为「双钥匙」：输入团队密码或超级密码都能上传 / 下载；即使团队密码被修改或遗忘，超级密码始终有效。</p>
+    <p class="tip" style="margin:6px 0 0">设置后云端数据升级为「双钥匙」：输入团队密码或超级密码都能上传 / 下载；即使团队密码被修改或遗忘，超级密码始终有效。修改后点「确认」生效。</p>
     <div class="set-row" style="margin-top:14px">
       <button id="btn-admin-pwd" class="btn" type="button">设置 / 修改管理员密码</button>
     </div>
@@ -2798,6 +2801,22 @@ button { font-family: inherit; }
     saveSettings(s);
     toast('团队密码已更新：到「云端同步」直接输入新密码点「上传到云端」即可，云端将自动改用新密码');
   }
+  /* 管理员弹窗内：超级密码「确认」按钮——两次一致立即生效 */
+  function confirmMasterPwd() {
+    var p1 = $('admin-master-pwd').value;
+    var p2 = $('admin-master-pwd2').value;
+    if (!p1 || !p2) { toast('请输入超级密码并再次确认'); return; }
+    if (p1.length < 6) { toast('密码至少 6 位'); return; }
+    if (p1 !== p2) {
+      toast('两次输入的密码不正确，请重新输入。');
+      $('admin-master-pwd2').value = ''; $('admin-master-pwd2').focus();
+      return;
+    }
+    var s = loadSettings() || {};
+    s.masterPwd = p1;
+    saveSettings(s);
+    toast('超级密码已更新：云端将升级为双钥匙，输入团队密码或超级密码均可上传 / 下载');
+  }
   function openAdminModal() {
     var s = loadSettings() || {};
     $('admin-key').value = s.key || '';
@@ -2823,20 +2842,14 @@ button { font-family: inherit; }
     var newSync2 = $('admin-sync-pwd2').value;
     if (newSync !== newSync2) { toast('两次输入的密码不正确，请重新输入。'); return; }
     var saveSync = newSync !== '' ? newSync : oldSync;
-    /* 超级密码确认校验：两次输入必须一致；都留空视为不设置（保持现有超级密码） */
-    var newMaster = $('admin-master-pwd').value;
-    var newMaster2 = $('admin-master-pwd2').value;
-    if (newMaster !== newMaster2) { toast('两次输入的密码不正确，请重新输入。'); return; }
-    var saveMaster = newMaster !== '' ? newMaster : (cur.masterPwd || '');
+    /* 超级密码由「确认」按钮单独生效，保存设置不改动超级密码 */
     saveSettings({ key: key, securityCode: sec, ghToken: tok, clusterEnabled: !!cur.clusterEnabled,
-      remindDays: cur.remindDays || 0, syncPassword: saveSync, masterPwd: saveMaster,
+      remindDays: cur.remindDays || 0, syncPassword: saveSync, masterPwd: cur.masterPwd || '',
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
     /* 团队密码有变更：提示云端数据迁移（直接输入新密码上传即可，自动覆盖迁移） */
     if (oldSync && saveSync && oldSync !== saveSync) {
       toast('团队密码已更新：到「云端同步」直接输入新密码点「上传到云端」即可，云端将自动改用新密码');
-    } else if (newMaster !== '' && newMaster !== (cur.masterPwd || '')) {
-      toast('超级密码已设置：下次上传云端后数据将升级为「双钥匙」（团队密码 / 超级密码均可使用）');
     } else {
       toast('管理员配置已保存');
     }
@@ -3042,6 +3055,7 @@ button { font-family: inherit; }
       .then(function (r) {
         if (r.status === 404) return null;
         return r.json().then(function (j) {
+          if (!r.ok) throw new Error((j && j.message) || ('GitHub 请求失败 HTTP ' + r.status));
           if (j && j.content) { try { j._raw = atob(j.content.replace(/\s/g, '')); } catch (e) {} }
           return j;
         });
@@ -3052,7 +3066,12 @@ button { font-family: inherit; }
     if (sha) body.sha = sha;
     return fetch('https://api.github.com/repos/' + SYNC_REPO + '/contents/' + SYNC_FILE, {
       method: 'PUT', headers: ghHeaders(cfg), body: JSON.stringify(body)
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error((j && j.message) || ('GitHub 请求失败 HTTP ' + r.status));
+        return j;
+      });
+    });
   }
   function syncUpload() {
     readSyncUI();
@@ -3118,15 +3137,20 @@ button { font-family: inherit; }
               syncSetStatus('上传成功：云端数据已用当前团队密码重新加密' + (masterPwd ? '（超级密码仍然可用）' : ''));
             });
           }, function (e2) {
-            syncSetStatus('上传失败：密码不匹配（输入团队密码或超级密码）', true);
-            throw new Error('pwd-mismatch');
+            /* 覆盖重建失败：多为 Token 无效 / 网络错误（而不是密码错误），不要误导为「密码不匹配」 */
+            var m2 = (e2 && e2.message) ? e2.message : '';
+            syncSetStatus('上传失败：' + (/401|403|Token|fetch|network/i.test(m2) ? m2 + '，请检查设置中的 GitHub Token' : '网络或配置错误，请检查 Token 是否有效'), true);
+            throw new Error('net-error');
           });
         }
         syncSetStatus('上传失败：密码不匹配（输入团队密码或超级密码）', true);
         throw new Error('pwd-mismatch');
       });
     }).catch(function (e) {
-      if (e && e.message !== 'pwd-mismatch') syncSetStatus('上传失败：' + (e && e.message ? e.message : '网络或配置错误，请检查 Token 是否有效'), true);
+      if (e && e.message !== 'pwd-mismatch' && e.message !== 'net-error') {
+        var m = e.message || '';
+        syncSetStatus('上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? m + '，Token 无效或已过期，请在「管理员配置」中更新' : (m || '网络或配置错误，请检查 Token 是否有效')), true);
+      }
     });
   }
   function syncDownload() {
@@ -3165,11 +3189,20 @@ button { font-family: inherit; }
         renderCustomerList();
         syncSetStatus('下载成功：云端 ' + cloudList.length + ' 个客户，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
       }, function () {
-        syncSetStatus('下载失败：共享密码不匹配，无法解密云端数据', true);
+        /* 解密失败：区分「密码错误」与「改密后云端仍是旧密码」（新密码解不开旧数据） */
+        var st2 = loadSettings() || {};
+        if (verifyPwd === (st2.syncPassword || '')) {
+          syncSetStatus('下载失败：云端数据仍是修改前的旧密码加密。请先点「上传到云端」用当前团队密码更新云端，再下载即可', true);
+        } else {
+          syncSetStatus('下载失败：共享密码不匹配，无法解密云端数据（输入团队密码或超级密码）', true);
+        }
         throw new Error('pwd-mismatch');
       });
     }).catch(function (e) {
-      if (e && e.message !== 'pwd-mismatch') syncSetStatus('下载失败：' + (e && e.message ? e.message : '网络或配置错误'), true);
+      if (e && e.message !== 'pwd-mismatch') {
+        var m = e.message || '';
+        syncSetStatus('下载失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? m + '，Token 无效或已过期，请在「管理员配置」中更新' : (m || '网络或配置错误')), true);
+      }
     });
   }
   function adminCloudUpload() {
@@ -3242,10 +3275,11 @@ button { font-family: inherit; }
         renderCustomerList();
         adminSetStatus('下载成功：合并 ' + customers.length + ' 个客户（新增 ' + added + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
       }, function () {
-        adminSetStatus('下载失败：共享密码不匹配，无法解密云端数据', true);
+        adminSetStatus('下载失败：共享密码不匹配，无法解密云端数据。若刚修改过团队密码，请先点「上传到云端」用当前密码更新云端数据', true);
       });
     }).catch(function (e) {
-      adminSetStatus('下载失败：' + (e && e.message ? e.message : '网络或配置错误'), true);
+      var m = e && e.message ? e.message : '';
+      adminSetStatus('下载失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? m + '，Token 无效或已过期，请更新' : (m || '网络或配置错误')), true);
     });
   }
   function adminSetStatus(txt, isErr) {
@@ -4085,6 +4119,7 @@ button { font-family: inherit; }
     $('admin-pwd-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitAdminPwd(); });
     $('admin-pwd-input2').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitAdminPwd(); });
     $('btn-sync-pwd-confirm').addEventListener('click', confirmSyncPwd);
+    $('btn-master-pwd-confirm').addEventListener('click', confirmMasterPwd);
     $('btn-admin-close').addEventListener('click', closeAdminModal);
     $('btn-admin-save').addEventListener('click', saveAdminFromUI);
     $('btn-admin-pwd').addEventListener('click', adminPwdEntry);
