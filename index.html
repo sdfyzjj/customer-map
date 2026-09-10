@@ -364,6 +364,18 @@ button { font-family: inherit; }
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .mask.hidden { display: none; }
+/* 云端同步弹窗：fixed 全屏遮罩 + 弹窗顶部对齐偏上（手机上移避开输入键盘，
+   键盘弹起时聚焦输入框仍可见，底部导航「路线/客户」不被遮挡） */
+#sync-modal-mask.modal-mask {
+  position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2100;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 6vh 16px 24px; overflow-y: auto;
+}
+#sync-modal-mask .modal-box {
+  background: #fff; border-radius: 14px; padding: 20px 22px;
+  box-shadow: 0 12px 44px rgba(0,0,0,.22); width: 100%;
+  max-height: 84vh; overflow-y: auto;
+}
 /* 从设置弹窗内打开的回收站窗口需要盖在设置之上；确认弹窗永远在最上层 */
 #trash-mask { z-index: 2100; }
 #confirm-mask { z-index: 3000; }
