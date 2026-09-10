@@ -871,7 +871,7 @@ button { font-family: inherit; }
 <div id="sync-modal-mask" class="modal-mask hidden">
   <div class="modal-box" style="max-width:460px">
     <h3>云端同步（多用户共享）</h3>
-    <p class="tip" style="margin:6px 0 0">团队设备填相同密码即可互相上传 / 下载；密码不匹配无法解密。管理员可输入超级密码（团队密码忘了也能用）。</p>
+    <p class="tip" style="margin:6px 0 0">成员模式：仅上传 / 下载带自己标签的客户（无标签公共客户可下载共享）。管理员全量上传 / 下载请用「设置 → 管理员配置」。</p>
     <label style="margin-top:14px">共享密码 / 超级密码</label>
     <input id="sync-pwd" type="password" placeholder="输入团队共享密码或超级密码" autocomplete="new-password">
     <div class="set-row" style="margin-top:14px">
@@ -3098,13 +3098,17 @@ button { font-family: inherit; }
     var mt = (loadSettings() || {}).memberTag || '';
     if (!mt.trim()) { syncSetStatus('请先在「设置」中填写团员姓名，作为上传标签', true); return; }
     var needSave = false;
-    customers.forEach(function (c) { if (!(c.owner || '').trim()) { c.owner = mt.trim(); needSave = true; } });
+    customers.forEach(function (c) { if (!(c.owner || '').trim() && !c.isPublic) { c.owner = mt.trim(); needSave = true; } });
     if (needSave) saveData();
-    syncSetStatus('正在加密并上传…');
+    /* 成员模式：仅上传带自己标签的客户（公共/他人标签的不上传） */
+    var uploadList = customers.filter(function (c) { return (c.owner || '').trim() === mt.trim(); });
+    if (!uploadList.length) { syncSetStatus('当前没有带「' + mt.trim() + '」标签的客户可上传', true); return; }
+    var pubN = customers.filter(function (c) { return !(c.owner || '').trim() && c.isPublic; }).length;
+    syncSetStatus('正在加密并上传（成员模式：仅标签「' + mt.trim() + '」的客户' + (pubN ? '；另有 ' + pubN + ' 个公共客户为共享数据不上传' : '') + '）…');
     /* 上传内容：客户列表 + 管理员密码指纹（v2 内层结构） */
     var st = loadSettings() || {};
     var masterPwd = st.masterPwd || '';
-    var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
+    var payloadObj = { v: 2, customers: uploadList, adminPwdHash: st.adminPwdHash || '' };
     ghGetFile(cfg).then(function (rec) {
       var cloudPayload = null;
       if (rec) { try { cloudPayload = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {} }
@@ -3128,7 +3132,7 @@ button { font-family: inherit; }
       return decryptAny(cloudPayload, verifyPwd).then(function (cloud) {
         var cloudList = Array.isArray(cloud) ? cloud : (cloud && Array.isArray(cloud.customers) ? cloud.customers : null);
         if (!cloudList) { syncSetStatus('上传失败：云端数据格式异常', true); throw new Error('pwd-mismatch'); }
-        var merged = customers.slice();
+        var merged = uploadList.slice();
         var seen = {};
         merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
         var added = 0;
@@ -3139,25 +3143,11 @@ button { font-family: inherit; }
         payloadObj.customers = merged;
         return upOne(payloadObj);
       }, function () {
-        /* 解密失败：若输入的密码 = 本机当前团队密码（管理员刚改过团队密码、云端还是旧密码加密），
-           用当前密码（优先超级密码解锁）重新加密上传，覆盖云端完成改密迁移 */
+        /* 解密失败：若输入的密码 = 本机当前团队密码（管理员刚改过团队密码、云端还是旧密码加密）。
+           成员模式禁止覆盖重建，避免覆盖其他成员数据；改密迁移由管理员弹窗完成 */
         if (verifyPwd === encPwd && cfg.token) {
-          syncSetStatus('云端数据与当前密码不匹配（可能是修改团队密码前上传的），正在用当前密码重新加密上传…');
-          /* 改密覆盖：全新重建加密（不依赖旧数据密钥，即使云端被旧密码/他人密码加密也能重置） */
-          return encryptDataV3(payloadObj, encPwd, masterPwd).then(function (p2) {
-            var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
-            return ghPutFile(cfg, b64, rec.sha).then(function (up) {
-              var stx = loadSettings() || {};
-              stx.lastCloudSha = (up && up.content && up.content.sha) || rec.sha;
-              saveSettings(stx);
-              syncSetStatus('上传成功：云端数据已用当前团队密码重新加密' + (masterPwd ? '（超级密码仍然可用）' : ''));
-            });
-          }, function (e2) {
-            /* 覆盖重建失败：多为 Token 无效 / 网络错误（而不是密码错误），不要误导为「密码不匹配」 */
-            var m2 = (e2 && e2.message) ? e2.message : '';
-            syncSetStatus('上传失败：' + (/401|403|Token|fetch|network/i.test(m2) ? m2 + '，请检查设置中的 GitHub Token' : '网络或配置错误，请检查 Token 是否有效'), true);
-            throw new Error('net-error');
-          });
+          syncSetStatus('云端数据与当前密码不匹配，为避免覆盖其他成员数据，请先联系管理员，或在「管理员配置」中执行全量上传/下载', true);
+          throw new Error('pwd-mismatch');
         }
         syncSetStatus('上传失败：密码不匹配（输入当前生效的团队密码或超级密码）。若刚修改过密码，请确认已在「管理员配置」中点过「确认」按钮', true);
         throw new Error('pwd-mismatch');
@@ -3185,12 +3175,17 @@ button { font-family: inherit; }
         if (Array.isArray(cloud)) cloudList = cloud;                    /* 旧格式：纯客户数组 */
         else if (cloud && Array.isArray(cloud.customers)) { cloudList = cloud.customers; cloudHash = cloud.adminPwdHash || ''; }  /* v2：客户 + 管理员密码指纹 */
         else throw new Error('云端数据格式异常');
-        /* 合并：本地 + 云端，按 姓名+电话+地址 去重，云端有而本地无的客户加入 */
+        /* 合并：本地 + 云端（成员模式：只取带自己标签 + 无标签公共客户），按 姓名+电话+地址 去重 */
+        var mt = (loadSettings() || {}).memberTag || '';
+        var myTag = mt.trim();
+        var cloudMine = cloudList.filter(function (c) { var o = (c.owner || '').trim(); return !o || (myTag && o === myTag); });
+        /* 公共客户（无标签）打上共享标记：成员上传时不吸收、不上传（由管理员全量维护） */
+        cloudMine.forEach(function (c) { if (!(c.owner || '').trim()) c.isPublic = true; });
         var merged = customers.slice();
         var seen = {};
         merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
         var added = 0;
-        cloudList.forEach(function (c) {
+        cloudMine.forEach(function (c) {
           var k = customerDupKey(c);
           if (!seen[k]) { merged.push(c); seen[k] = true; added++; }
         });
@@ -3206,7 +3201,7 @@ button { font-family: inherit; }
         var stx = loadSettings() || {};
         stx.lastCloudSha = rec.sha || (stx.lastCloudSha || '');
         saveSettings(stx);
-        syncSetStatus('下载成功：云端 ' + cloudList.length + ' 个客户，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
+        syncSetStatus('下载成功：云端 ' + cloudList.length + ' 个客户中，标签「' + (myTag || '未设置') + '」及公共的 ' + cloudMine.length + ' 个，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
       }, function () {
         /* 解密失败：区分「密码错误」与「改密后云端仍是旧密码」（新密码解不开旧数据） */
         var st2 = loadSettings() || {};
@@ -3225,17 +3220,13 @@ button { font-family: inherit; }
     });
   }
   function adminCloudUpload() {
-    /* 管理员权限上传：用本机团队密码，本地客户数据整体覆盖云端 */
+    /* 管理员权限上传：用本机团队密码，本地客户数据整体覆盖云端。
+       不打标无标签客户：保留「公共客户」（owner 为空）供全员共享下载；
+       成员私有客户带各自标签上传，由成员各自维护 */
     var cfg = syncCfg();
     if (!cfg.token) { adminSetStatus('未配置 GitHub Token（请在管理员配置中填写）', true); return; }
     if (!cfg.pwd) { adminSetStatus('未设置团队密码（请在管理员配置中填写）', true); return; }
     if (!customers.length) { adminSetStatus('当前没有客户数据可上传', true); return; }
-    /* 上传标签：本机团员姓名（首次上传前需在「设置」中填写）；给本机无录入者的客户打上标签 */
-    var mt = (loadSettings() || {}).memberTag || '';
-    if (!mt.trim()) { adminSetStatus('请先在「设置」中填写团员姓名，作为上传标签', true); return; }
-    var needSave = false;
-    customers.forEach(function (c) { if (!(c.owner || '').trim()) { c.owner = mt.trim(); needSave = true; } });
-    if (needSave) saveData();
     adminSetStatus('正在加密并上传…');
     var st = loadSettings() || {};
     var masterPwd = st.masterPwd || '';
