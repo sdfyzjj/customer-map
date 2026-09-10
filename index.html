@@ -2789,9 +2789,9 @@ button { font-family: inherit; }
       remindDays: cur.remindDays || 0, syncPassword: saveSync, masterPwd: saveMaster,
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
-    /* 团队密码有变更：提示云端数据迁移（用旧密码上传一次，云端改用新密码加密） */
+    /* 团队密码有变更：提示云端数据迁移（直接输入新密码上传即可，自动覆盖迁移） */
     if (oldSync && saveSync && oldSync !== saveSync) {
-      toast('团队密码已更新：请到「云端同步」输入旧密码点「上传到云端」，云端数据将改用新密码加密');
+      toast('团队密码已更新：到「云端同步」直接输入新密码点「上传到云端」即可，云端将自动改用新密码');
     } else if (newMaster !== '' && newMaster !== (cur.masterPwd || '')) {
       toast('超级密码已设置：下次上传云端后数据将升级为「双钥匙」（团队密码 / 超级密码均可使用）');
     } else {
@@ -2978,6 +2978,27 @@ button { font-family: inherit; }
     if (masterPwd) return encryptDataV3(obj, encPwd, masterPwd);
     return encryptData(obj, encPwd);
   }
+  /* 改密迁移专用：云端 v3 时用「超级密码优先、否则输入密码」解锁数据密钥 DK，
+     然后两把钥匙都用权威密码（当前团队密码 / 超级密码）重新包装；云端非 v3 直接全新 v3 */
+  function overrideEncryptV3(obj, teamPwd, masterPwd, cloudPayload) {
+    if (!(cloudPayload && cloudPayload.v === 3)) {
+      return encryptDataV3(obj, teamPwd, masterPwd);
+    }
+    var envs = [cloudPayload.dkTeam];
+    if (cloudPayload.dkMaster) envs.push(cloudPayload.dkMaster);
+    return unlockAny(envs, masterPwd || teamPwd).then(function (r) {
+      return sealData(r.dk, obj).then(function (data) {
+        var p2 = { v: 3, data: data };
+        return wrapKey(teamPwd, r.dk).then(function (dkTeam) {
+          p2.dkTeam = dkTeam;
+          if (masterPwd) {
+            return wrapKey(masterPwd, r.dk).then(function (dkMaster) { p2.dkMaster = dkMaster; return p2; });
+          }
+          return p2;
+        });
+      });
+    });
+  }
   /* 客户去重键：姓名 + 电话 + 地址（与导入去重一致） */
   function customerDupKey(c) {
     var tel = '', addr = '';
@@ -3064,6 +3085,20 @@ button { font-family: inherit; }
         payloadObj.customers = merged;
         return upOne(payloadObj);
       }, function () {
+        /* 解密失败：若输入的密码 = 本机当前团队密码（管理员刚改过团队密码、云端还是旧密码加密），
+           用当前密码（优先超级密码解锁）重新加密上传，覆盖云端完成改密迁移 */
+        if (verifyPwd === encPwd && cfg.token) {
+          syncSetStatus('云端数据与当前密码不匹配（可能是修改团队密码前上传的），正在用当前密码重新加密上传…');
+          return overrideEncryptV3(payloadObj, encPwd, masterPwd, cloudPayload).then(function (p2) {
+            var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
+            return ghPutFile(cfg, b64, rec.sha).then(function () {
+              syncSetStatus('上传成功：云端数据已用当前团队密码重新加密' + (masterPwd ? '（超级密码仍然可用）' : ''));
+            });
+          }, function (e2) {
+            syncSetStatus('上传失败：密码不匹配（输入团队密码或超级密码）', true);
+            throw new Error('pwd-mismatch');
+          });
+        }
         syncSetStatus('上传失败：密码不匹配（输入团队密码或超级密码）', true);
         throw new Error('pwd-mismatch');
       });
