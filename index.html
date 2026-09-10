@@ -772,6 +772,9 @@ button { font-family: inherit; }
     <label style="margin-top:14px">GitHub Token（云端同步上传用）</label>
     <input id="admin-gh-token" type="password" placeholder="GitHub → Settings → Developer settings → Tokens" autocomplete="new-password">
     <p class="tip" style="margin:6px 0 0">上传客户数据到云端时使用此 Token；普通成员无需填写，在「云端同步」中输入共享密码即可上传 / 下载。</p>
+    <div class="set-row" style="margin-top:14px">
+      <button id="btn-admin-pwd" class="btn" type="button">设置 / 修改管理员密码</button>
+    </div>
     <div class="modal-actions">
       <button id="btn-admin-close" class="btn" type="button">取消</button>
       <span style="flex:1"></span>
@@ -2612,27 +2615,55 @@ button { font-family: inherit; }
     setTimeout(function () { $('admin-pwd-input').focus(); }, 50);
   }
   function closeAdminPwd() { $('admin-pwd-mask').classList.add('hidden'); }
+  /* 管理员弹窗内：设置 / 修改密码入口（已通过验证进入管理员弹窗后） */
+  function adminPwdEntry() {
+    var s = loadSettings() || {};
+    closeAdminModal();
+    if (!s.adminPwd) { openAdminPwd(); return; }   /* 未设置过：走首次设置流程 */
+    adminPwdStep = 'old'; adminPwdTmp = '';
+    $('admin-pwd-title').textContent = '修改管理员密码';
+    $('admin-pwd-hint').textContent = '请输入当前管理员密码';
+    $('admin-pwd-input').value = '';
+    $('admin-pwd-mask').classList.remove('hidden');
+    setTimeout(function () { $('admin-pwd-input').focus(); }, 50);
+  }
   function submitAdminPwd() {
     var pwd = $('admin-pwd-input').value;
-    if (!pwd) { toast('请输入管理员密码'); return; }
+    if (!pwd) { toast('请输入密码'); return; }
     var s = loadSettings() || {};
     if (adminPwdStep === 'check') {
       if (pwd === s.adminPwd) { closeAdminPwd(); openAdminModal(); }
       else { toast('管理员密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus(); }
-    } else if (adminPwdStep === 'set1') {
-      adminPwdTmp = pwd; adminPwdStep = 'set2';
-      $('admin-pwd-title').textContent = '设置管理员密码';
+    } else if (adminPwdStep === 'old') {
+      /* 修改密码第一步：验证当前密码 */
+      if (pwd === s.adminPwd) {
+        adminPwdStep = 'new1'; adminPwdTmp = '';
+        $('admin-pwd-title').textContent = '修改管理员密码';
+        $('admin-pwd-hint').textContent = '请输入新密码（至少 6 位）';
+        $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
+      } else {
+        toast('当前密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
+      }
+    } else if (adminPwdStep === 'set1' || adminPwdStep === 'new1') {
+      /* 首次设置 or 修改：输入新密码 */
+      if (pwd.length < 6) { toast('密码至少 6 位'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus(); return; }
+      adminPwdTmp = pwd;
+      adminPwdStep = (adminPwdStep === 'set1') ? 'set2' : 'new2';
+      $('admin-pwd-title').textContent = (adminPwdStep === 'set2') ? '设置管理员密码' : '修改管理员密码';
       $('admin-pwd-hint').textContent = '请再次输入以确认';
       $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
-    } else if (adminPwdStep === 'set2') {
+    } else if (adminPwdStep === 'set2' || adminPwdStep === 'new2') {
+      /* 确认密码 */
       if (pwd === adminPwdTmp) {
         s.adminPwd = pwd; saveSettings(s);
-        toast('管理员密码已设置');
+        toast(adminPwdStep === 'set2' ? '管理员密码已设置' : '管理员密码已修改');
         closeAdminPwd(); openAdminModal();
       } else {
-        toast('两次输入不一致，请重新设置'); adminPwdStep = 'set1'; adminPwdTmp = '';
-        $('admin-pwd-title').textContent = '设置管理员密码';
-        $('admin-pwd-hint').textContent = '首次使用，请设置管理员密码（用于进入管理员配置）';
+        toast('两次输入不一致，请重新输入');
+        adminPwdStep = (adminPwdStep === 'set2') ? 'set1' : 'new1';
+        adminPwdTmp = '';
+        $('admin-pwd-title').textContent = (adminPwdStep === 'set1') ? '设置管理员密码' : '修改管理员密码';
+        $('admin-pwd-hint').textContent = (adminPwdStep === 'set1') ? '首次使用，请设置管理员密码（用于进入管理员配置）' : '请输入新密码（至少 6 位）';
         $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
       }
     }
@@ -3660,6 +3691,7 @@ button { font-family: inherit; }
     $('admin-pwd-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitAdminPwd(); });
     $('btn-admin-close').addEventListener('click', closeAdminModal);
     $('btn-admin-save').addEventListener('click', saveAdminFromUI);
+    $('btn-admin-pwd').addEventListener('click', adminPwdEntry);
     $('btn-backup').addEventListener('click', backupData);
     $('btn-restore').addEventListener('click', function () { $('restore-file').click(); });
     $('restore-file').addEventListener('change', function (e) { if (e.target.files && e.target.files[0]) restoreData(e.target.files[0]); e.target.value = ''; });
