@@ -3366,6 +3366,17 @@ button { font-family: inherit; }
   }
   /* 关闭管理员弹窗后：本次打开期间有改动（客户数据 / 团队密码 / 超级密码）才自动上传 */
   function autoSyncOnClose() {
+    /* 若输入框里填了新密码（两框一致且与已保存不同）但没点「确认」，关闭时一并生效，
+       避免出现「填了新密码、云端却还是旧密码」导致菜单栏同步不匹配 */
+    var p1 = $('admin-sync-pwd') ? $('admin-sync-pwd').value : '';
+    var p2 = $('admin-sync-pwd2') ? $('admin-sync-pwd2').value : '';
+    var m1 = $('admin-master-pwd') ? $('admin-master-pwd').value : '';
+    var m2 = $('admin-master-pwd2') ? $('admin-master-pwd2').value : '';
+    var st0 = loadSettings() || {};
+    var pwdChanged = false;
+    if (p1 && p1 === p2 && p1 !== (st0.syncPassword || '')) { st0.syncPassword = p1; pwdChanged = true; }
+    if (m1 && m1 === m2 && m1 !== (st0.masterPwd || '')) { st0.masterPwd = m1; pwdChanged = true; }
+    if (pwdChanged) { saveSettings(st0); toast('已保存新的团队密码 / 超级密码，正在自动上传…'); }
     var cfg = syncCfg();
     if (!cfg.token || !cfg.pwd) return;                 /* 未配置 Token / 密码：不自动传 */
     if (!adminChanged()) return;                        /* 无改动：不传 */
