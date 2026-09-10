@@ -772,6 +772,9 @@ button { font-family: inherit; }
     <label style="margin-top:14px">GitHub Token（云端同步上传用）</label>
     <input id="admin-gh-token" type="password" placeholder="GitHub → Settings → Developer settings → Tokens" autocomplete="new-password">
     <p class="tip" style="margin:6px 0 0">上传客户数据到云端时使用此 Token；普通成员无需填写，在「云端同步」中输入共享密码即可上传 / 下载。</p>
+    <label style="margin-top:14px">团队密码（云端同步共享密码）</label>
+    <input id="admin-sync-pwd" type="password" placeholder="团队成员在「云端同步」中输入此密码上传 / 下载" autocomplete="new-password">
+    <p class="tip" style="margin:6px 0 0">由管理员统一设置并告知团队成员；此密码用于加密云端客户数据，不会随数据同步上传，请线下告知成员。</p>
     <div class="set-row" style="margin-top:14px">
       <button id="btn-admin-pwd" class="btn" type="button">设置 / 修改管理员密码</button>
     </div>
@@ -2685,6 +2688,7 @@ button { font-family: inherit; }
     $('admin-key').value = s.key || '';
     $('admin-security').value = s.securityCode || '';
     $('admin-gh-token').value = s.ghToken || '';
+    $('admin-sync-pwd').value = s.syncPassword || '';
     $('admin-mask').classList.remove('hidden');
   }
   function closeAdminModal() { $('admin-mask').classList.add('hidden'); }
@@ -2695,7 +2699,7 @@ button { font-family: inherit; }
     if (!key) { toast('请填写高德 Key'); return; }
     var cur = loadSettings() || {};
     saveSettings({ key: key, securityCode: sec, ghToken: tok, clusterEnabled: !!cur.clusterEnabled,
-      remindDays: cur.remindDays || 0, syncPassword: cur.syncPassword || '',
+      remindDays: cur.remindDays || 0, syncPassword: $('admin-sync-pwd').value,
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
     if (map) { location.reload(); return; }
