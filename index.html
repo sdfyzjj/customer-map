@@ -145,6 +145,11 @@ button { font-family: inherit; }
   padding: 4px 10px; border-radius: 14px; cursor: pointer; line-height: 1.5;
 }
 .sp-clear-route:hover { background: #ffe4e3; }
+.iw-name-wrap { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.iw-owner {
+  flex: none; background: #e8f1ff; color: #1E6FFF; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+}
 .set-title { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .install-in-settings {
   border: none; background: #f2f4f7; color: #1f2329; font-size: 12px; font-weight: 600;
@@ -744,6 +749,8 @@ button { font-family: inherit; }
     <div class="set-row">
       <button id="btn-trash" class="btn" type="button">回收站（误删恢复）</button>
     </div>
+    <label style="margin-top:14px">团员姓名（上传数据时作为你的标签）</label>
+    <input id="set-member-tag" type="text" placeholder="如：张三（上传后管理员可看到每个客户是谁录入的）" maxlength="20" autocomplete="off">
     <label style="margin-top:14px">跟进提醒（超过 N 天未拜访的客户显示「未跟进」，0 为关闭）</label>
     <input id="set-remind" type="number" min="0" max="365" placeholder="如：30" autocomplete="off">
     <div class="set-row">
@@ -2072,8 +2079,15 @@ button { font-family: inherit; }
         '<input data-role="vnote" placeholder="记录本次拜访 / 跟进情况…" maxlength="200">' +
         '<button data-role="vadd" type="button">记录</button>' +
       '</div>';
+    /* 上传者标签：显示客户数据的录入者（本机新增客户显示本机团员姓名，云端下载的客户显示原上传者） */
+    var ownerShown = (c.owner || '').trim();
+    if (!ownerShown) {
+      var _mt = (loadSettings() || {}).memberTag || '';
+      ownerShown = _mt.trim();
+    }
+    var ownerHtml = ownerShown ? '<span class="iw-owner" title="录入者">' + esc(ownerShown) + '</span>' : '';
     return '<div class="iw">' +
-      '<div class="iw-head"><input class="iw-name" data-role="name" value="' + esc(customerDisplayName(c)) + '" placeholder="客户名称" maxlength="30">' +
+      '<div class="iw-head"><div class="iw-name-wrap"><input class="iw-name" data-role="name" value="' + esc(customerDisplayName(c)) + '" placeholder="客户名称" maxlength="30">' + ownerHtml + '</div>' +
         '<button class="iw-delcus" data-role="delcus" type="button" title="删除该客户">删除客户</button></div>' +
       posList +
       '<div class="iw-tags">' +
@@ -2616,6 +2630,7 @@ button { font-family: inherit; }
   function openSettings() {
     var s = loadSettings();
     $('set-remind').value = (s && s.remindDays) ? s.remindDays : '';
+    $('set-member-tag').value = (s && s.memberTag) ? s.memberTag : '';
     $('settings-mask').classList.remove('hidden');
   }
   function closeSettings() { $('settings-mask').classList.add('hidden'); }
@@ -2878,6 +2893,12 @@ button { font-family: inherit; }
     if (!cfg.token) { syncSetStatus('上传需要管理员在「设置」中配置 GitHub Token', true); return; }
     if (!verifyPwd) { syncSetStatus('请先输入共享密码', true); return; }
     if (!customers.length) { syncSetStatus('当前没有客户数据可上传', true); return; }
+    /* 上传标签：本机团员姓名（首次上传前需在「设置」中填写）；给本机无录入者的客户打上标签 */
+    var mt = (loadSettings() || {}).memberTag || '';
+    if (!mt.trim()) { syncSetStatus('请先在「设置」中填写团员姓名，作为上传标签', true); return; }
+    var needSave = false;
+    customers.forEach(function (c) { if (!(c.owner || '').trim()) { c.owner = mt.trim(); needSave = true; } });
+    if (needSave) saveData();
     syncSetStatus('正在加密并上传…');
     /* 上传内容：客户列表 + 管理员密码指纹（v2 结构，供团队其他设备下载后统一管理员密码） */
     var st = loadSettings() || {};
@@ -2971,6 +2992,12 @@ button { font-family: inherit; }
     if (!cfg.token) { adminSetStatus('未配置 GitHub Token（请在管理员配置中填写）', true); return; }
     if (!cfg.pwd) { adminSetStatus('未设置团队密码（请在管理员配置中填写）', true); return; }
     if (!customers.length) { adminSetStatus('当前没有客户数据可上传', true); return; }
+    /* 上传标签：本机团员姓名（首次上传前需在「设置」中填写）；给本机无录入者的客户打上标签 */
+    var mt = (loadSettings() || {}).memberTag || '';
+    if (!mt.trim()) { adminSetStatus('请先在「设置」中填写团员姓名，作为上传标签', true); return; }
+    var needSave = false;
+    customers.forEach(function (c) { if (!(c.owner || '').trim()) { c.owner = mt.trim(); needSave = true; } });
+    if (needSave) saveData();
     adminSetStatus('正在加密并上传…');
     var st = loadSettings() || {};
     var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
@@ -3128,6 +3155,7 @@ button { font-family: inherit; }
     var cur = loadSettings() || {};
     saveSettings({ key: cur.key || '', securityCode: cur.securityCode || '', clusterEnabled: !!cur.clusterEnabled,
       remindDays: remindN, ghToken: cur.ghToken || '', syncPassword: cur.syncPassword || '',
+      memberTag: ($('set-member-tag').value || '').trim(),
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeSettings();
     toast('设置已保存');
@@ -3172,13 +3200,16 @@ button { font-family: inherit; }
      默认保存到项目文件夹，可在导出对话框中修改保存位置 */
   function exportExcel() {
     if (!customers.length) { toast('当前没有可导出的客户数据'); return; }
-    var headers = ['姓名', '电话', '状态', '地址', '其他备注'];
+    var headers = ['姓名', '电话', '标签', '状态', '地址', '其他备注'];
     var rows = customers.map(function (c) {
       var info = {};
       (c.info || []).forEach(function (it) { if (it && it.k) info[it.k] = it.v || ''; });
       /* 姓名列：优先取信息中的「姓名」（真实姓名），否则回退客户名称 */
       var name = customerDisplayName(c);
       var tel = info['电话'] || '';
+      /* 标签列：录入者（本机新增客户未打标签时显示本机团员姓名） */
+      var owner = (c.owner || '').trim();
+      if (!owner) owner = ((loadSettings() || {}).memberTag || '').trim();
       /* 地址列：识别常见地址字段名（地址/详细地址/住址/所在地等） */
       var addr = customerAddress(c);
       /* 其他备注：排除 姓名/电话 及所有地址语义键，避免重复 */
@@ -3187,7 +3218,7 @@ button { font-family: inherit; }
         .filter(function (k) { return info[k]; })
         .map(function (k) { return k + '：' + info[k]; })
         .join('；');
-      return [name, tel, STATUS_NAMES[customerStatus(c)], addr, other];
+      return [name, tel, owner, STATUS_NAMES[customerStatus(c)], addr, other];
     });
     checkExportServer(function (res) {
       var dateStr = new Date().toISOString().slice(0, 10);
