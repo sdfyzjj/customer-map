@@ -793,6 +793,12 @@ button { font-family: inherit; }
     <div class="set-row" style="margin-top:14px">
       <button id="btn-admin-pwd" class="btn" type="button">设置 / 修改管理员密码</button>
     </div>
+    <div class="set-row" style="margin-top:14px">
+      <button id="btn-admin-upload" class="btn primary" type="button">上传云端（覆盖）</button>
+      <button id="btn-admin-download" class="btn" type="button">下载云端</button>
+    </div>
+    <p class="tip" style="margin:6px 0 0">上传 = 用本机客户数据整体覆盖云端（管理员权限）；下载 = 从云端合并拉取。</p>
+    <div id="admin-sync-status" class="export-hint" style="margin-top:8px"></div>
     <div class="modal-actions">
       <button id="btn-admin-close" class="btn" type="button">取消</button>
       <span style="flex:1"></span>
@@ -2866,7 +2872,7 @@ button { font-family: inherit; }
     readSyncUI();
     var cfg = syncCfg();
     /* 弹窗输入用于验证云端数据；加密用本机团队密码（管理员设置的最新密码）。
-       改过团队密码后：输入旧密码点上传，即可用新密码重新加密云端数据完成迁移 */
+       改过团队密码后：输入旧密码点上传，即可用新密码重新加密云端数据完成迁移（合并式，云端数据不丢） */
     var verifyPwd = $('sync-pwd').value;
     var encPwd = cfg.pwd || verifyPwd;
     if (!cfg.token) { syncSetStatus('上传需要管理员在「设置」中配置 GitHub Token', true); return; }
@@ -2880,13 +2886,28 @@ button { font-family: inherit; }
       var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(payload)));
       return ghGetFile(cfg).then(function (rec) {
         if (rec) {
-          /* 已有云端数据：先用弹窗输入的密码解密验证（密码错误则拒绝覆盖） */
+          /* 已有云端数据：先用弹窗输入的密码解密验证（密码错误则拒绝上传） */
           var raw = null;
           try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
           if (!raw) { syncSetStatus('上传失败：云端数据格式异常', true); throw new Error('pwd-mismatch'); }
-          return decryptData(raw, verifyPwd).then(function () {
-            return ghPutFile(cfg, b64, rec.sha).then(function () {
-              syncSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端' + (encPwd !== verifyPwd ? '（已用新团队密码重新加密）' : ''));
+          return decryptData(raw, verifyPwd).then(function (cloud) {
+            /* 合并上传：本地为主 + 云端新增补入（云端其他成员的数据不丢失） */
+            var cloudList = Array.isArray(cloud) ? cloud : (cloud && Array.isArray(cloud.customers) ? cloud.customers : null);
+            if (!cloudList) { syncSetStatus('上传失败：云端数据格式异常', true); throw new Error('pwd-mismatch'); }
+            var merged = customers.slice();
+            var seen = {};
+            merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
+            var added = 0;
+            cloudList.forEach(function (c) {
+              var k = customerDupKey(c);
+              if (!seen[k]) { merged.push(c); seen[k] = true; added++; }
+            });
+            payloadObj.customers = merged;
+            return encryptData(payloadObj, encPwd).then(function (payload2) {
+              var b642 = bufToB64(new TextEncoder().encode(JSON.stringify(payload2)));
+              return ghPutFile(cfg, b642, rec.sha).then(function () {
+                syncSetStatus('上传成功：合并 ' + merged.length + ' 个客户' + (added ? '（云端新增 ' + added + ' 个）' : '') + (encPwd !== verifyPwd ? '（已用新团队密码重新加密）' : ''));
+              });
             });
           }, function () {
             syncSetStatus('上传失败：共享密码不匹配。若刚修改了团队密码，请输入旧密码上传完成数据迁移', true);
@@ -2943,6 +2964,82 @@ button { font-family: inherit; }
     }).catch(function (e) {
       if (e && e.message !== 'pwd-mismatch') syncSetStatus('下载失败：' + (e && e.message ? e.message : '网络或配置错误'), true);
     });
+  }
+  function adminCloudUpload() {
+    /* 管理员权限上传：用本机团队密码，本地客户数据整体覆盖云端 */
+    var cfg = syncCfg();
+    if (!cfg.token) { adminSetStatus('未配置 GitHub Token（请在管理员配置中填写）', true); return; }
+    if (!cfg.pwd) { adminSetStatus('未设置团队密码（请在管理员配置中填写）', true); return; }
+    if (!customers.length) { adminSetStatus('当前没有客户数据可上传', true); return; }
+    adminSetStatus('正在加密并上传…');
+    var st = loadSettings() || {};
+    var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
+    encryptData(payloadObj, cfg.pwd).then(function (payload) {
+      var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(payload)));
+      return ghGetFile(cfg).then(function (rec) {
+        if (rec) {
+          var raw = null;
+          try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
+          if (!raw) { adminSetStatus('上传失败：云端数据格式异常', true); throw new Error('pwd-mismatch'); }
+          return decryptData(raw, cfg.pwd).then(function () {
+            return ghPutFile(cfg, b64, rec.sha).then(function () {
+              adminSetStatus('覆盖上传成功：' + customers.length + ' 个客户已替换云端');
+            });
+          }, function () {
+            adminSetStatus('覆盖失败：共享密码不匹配。若刚修改了团队密码，请先在「云端同步」输入旧密码上传迁移一次', true);
+            throw new Error('pwd-mismatch');
+          });
+        }
+        return ghPutFile(cfg, b64, null).then(function () {
+          adminSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
+        });
+      });
+    }).catch(function (e) {
+      if (e && e.message !== 'pwd-mismatch') adminSetStatus('上传失败：' + (e && e.message ? e.message : '网络或配置错误，请检查 Token 是否有效'), true);
+    });
+  }
+  function adminCloudDownload() {
+    /* 管理员下载：从云端合并拉取（与普通下载一致） */
+    var cfg = syncCfg();
+    if (!cfg.pwd) { adminSetStatus('未设置团队密码（请在管理员配置中填写）', true); return; }
+    adminSetStatus('正在下载并解密…');
+    ghGetFile(cfg).then(function (rec) {
+      if (!rec) { adminSetStatus('云端还没有数据（可先在任一设备点击「上传到云端」）', true); return; }
+      var raw = null;
+      try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
+      if (!raw) { adminSetStatus('下载失败：云端数据格式异常', true); return; }
+      return decryptData(raw, cfg.pwd).then(function (cloud) {
+        var cloudList = null, cloudHash = '';
+        if (Array.isArray(cloud)) cloudList = cloud;
+        else if (cloud && Array.isArray(cloud.customers)) { cloudList = cloud.customers; cloudHash = cloud.adminPwdHash || ''; }
+        else throw new Error('云端数据格式异常');
+        var merged = customers.slice();
+        var seen = {};
+        merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
+        var added = 0;
+        cloudList.forEach(function (c) {
+          var k = customerDupKey(c);
+          if (!seen[k]) { merged.push(c); seen[k] = true; added++; }
+        });
+        customers = merged;
+        saveData();
+        if (cloudHash) {
+          var st = loadSettings() || {};
+          st.adminPwdHash = cloudHash; delete st.adminPwd; saveSettings(st);
+        }
+        if (map) renderMarkers();
+        renderCustomerList();
+        adminSetStatus('下载成功：合并 ' + customers.length + ' 个客户（新增 ' + added + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
+      }, function () {
+        adminSetStatus('下载失败：共享密码不匹配，无法解密云端数据', true);
+      });
+    }).catch(function (e) {
+      adminSetStatus('下载失败：' + (e && e.message ? e.message : '网络或配置错误'), true);
+    });
+  }
+  function adminSetStatus(txt, isErr) {
+    var el = $('admin-sync-status');
+    if (el) { el.textContent = txt; el.className = 'export-hint' + (isErr ? ' err' : ''); }
   }
   function restoreTrashItem(id) {
     var t = loadTrash();
@@ -3608,6 +3705,8 @@ button { font-family: inherit; }
     $('btn-sync-close').addEventListener('click', closeSyncModal);
     $('btn-sync-upload').addEventListener('click', syncUpload);
     $('btn-sync-download').addEventListener('click', syncDownload);
+    $('btn-admin-upload').addEventListener('click', adminCloudUpload);
+    $('btn-admin-download').addEventListener('click', adminCloudDownload);
     /* 统计弹窗「待定位客户」按钮：关闭统计，打开客户面板并筛选出未定位客户 */
     $('btn-stats-noloct').addEventListener('click', function () {
       closeStats();
