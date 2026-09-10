@@ -2698,13 +2698,24 @@ button { font-family: inherit; }
     var tok = $('admin-gh-token').value;
     if (!key) { toast('请填写高德 Key'); return; }
     var cur = loadSettings() || {};
+    var oldKey = cur.key || '';
+    var oldSync = cur.syncPassword || '';
+    var newSync = $('admin-sync-pwd').value;
     saveSettings({ key: key, securityCode: sec, ghToken: tok, clusterEnabled: !!cur.clusterEnabled,
-      remindDays: cur.remindDays || 0, syncPassword: $('admin-sync-pwd').value,
+      remindDays: cur.remindDays || 0, syncPassword: newSync,
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
-    if (map) { location.reload(); return; }
-    showMapTip('正在加载地图…');
-    loadMap(key, sec);
+    /* 团队密码有变更：提示云端数据迁移（用旧密码上传一次，云端改用新密码加密） */
+    if (oldSync && newSync && oldSync !== newSync) {
+      toast('团队密码已更新：请到「云端同步」输入旧密码点「上传到云端」，云端数据将改用新密码加密');
+    } else {
+      toast('管理员配置已保存');
+    }
+    if (oldKey !== key) {
+      if (map) { location.reload(); return; }
+      showMapTip('正在加载地图…');
+      loadMap(key, sec);
+    }
   }
 
   /* ================= 云端同步弹窗（菜单栏入口，仅共享密码） ================= */
@@ -2715,10 +2726,11 @@ button { font-family: inherit; }
     $('sync-modal-mask').classList.remove('hidden');
   }
   function closeSyncModal() { $('sync-modal-mask').classList.add('hidden'); }
-  /* 点上传/下载时：先保存弹窗输入的共享密码，再执行同步（Token 由管理员在设置中配置） */
+  /* 点上传/下载时：仅当本机尚未保存团队密码时保存弹窗输入（成员首次使用）；
+     团队密码由管理员统一管理，弹窗输入不覆盖已保存的团队密码 */
   function readSyncUI() {
     var s = loadSettings() || {};
-    s.syncPassword = $('sync-pwd').value;
+    if (!s.syncPassword && $('sync-pwd').value) s.syncPassword = $('sync-pwd').value;
     saveSettings(s);
     return s;
   }
@@ -2833,27 +2845,31 @@ button { font-family: inherit; }
   function syncUpload() {
     readSyncUI();
     var cfg = syncCfg();
+    /* 弹窗输入用于验证云端数据；加密用本机团队密码（管理员设置的最新密码）。
+       改过团队密码后：输入旧密码点上传，即可用新密码重新加密云端数据完成迁移 */
+    var verifyPwd = $('sync-pwd').value;
+    var encPwd = cfg.pwd || verifyPwd;
     if (!cfg.token) { syncSetStatus('上传需要管理员在「设置」中配置 GitHub Token', true); return; }
-    if (!cfg.pwd) { syncSetStatus('请先设置共享密码', true); return; }
+    if (!verifyPwd) { syncSetStatus('请先输入共享密码', true); return; }
     if (!customers.length) { syncSetStatus('当前没有客户数据可上传', true); return; }
     syncSetStatus('正在加密并上传…');
     /* 上传内容：客户列表 + 管理员密码指纹（v2 结构，供团队其他设备下载后统一管理员密码） */
     var st = loadSettings() || {};
     var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
-    encryptData(payloadObj, cfg.pwd).then(function (payload) {
+    encryptData(payloadObj, encPwd).then(function (payload) {
       var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(payload)));
       return ghGetFile(cfg).then(function (rec) {
         if (rec) {
-          /* 已有云端数据：先用密码解密验证（密码错误则拒绝覆盖） */
+          /* 已有云端数据：先用弹窗输入的密码解密验证（密码错误则拒绝覆盖） */
           var raw = null;
           try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
           if (!raw) { syncSetStatus('上传失败：云端数据格式异常', true); throw new Error('pwd-mismatch'); }
-          return decryptData(raw, cfg.pwd).then(function () {
+          return decryptData(raw, verifyPwd).then(function () {
             return ghPutFile(cfg, b64, rec.sha).then(function () {
-              syncSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
+              syncSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端' + (encPwd !== verifyPwd ? '（已用新团队密码重新加密）' : ''));
             });
           }, function () {
-            syncSetStatus('上传失败：共享密码与云端数据不匹配，无法覆盖', true);
+            syncSetStatus('上传失败：共享密码不匹配。若刚修改了团队密码，请输入旧密码上传完成数据迁移', true);
             throw new Error('pwd-mismatch');
           });
         }
@@ -2868,14 +2884,15 @@ button { font-family: inherit; }
   function syncDownload() {
     readSyncUI();
     var cfg = syncCfg();
-    if (!cfg.pwd) { syncSetStatus('请先输入共享密码', true); return; }
+    var verifyPwd = $('sync-pwd').value;
+    if (!verifyPwd) { syncSetStatus('请先输入共享密码', true); return; }
     syncSetStatus('正在下载并解密…');
     ghGetFile(cfg).then(function (rec) {
       if (!rec) { syncSetStatus('云端还没有数据（可先在任一设备点击「上传到云端」）'); return; }
       var raw = null;
       try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
       if (!raw) { syncSetStatus('下载失败：云端数据格式异常', true); return; }
-      return decryptData(raw, cfg.pwd).then(function (cloud) {
+      return decryptData(raw, verifyPwd).then(function (cloud) {
         var cloudList = null, cloudHash = '';
         if (Array.isArray(cloud)) cloudList = cloud;                    /* 旧格式：纯客户数组 */
         else if (cloud && Array.isArray(cloud.customers)) { cloudList = cloud.customers; cloudHash = cloud.adminPwdHash || ''; }  /* v2：客户 + 管理员密码指纹 */
