@@ -3159,7 +3159,7 @@ button { font-family: inherit; }
             throw new Error('net-error');
           });
         }
-        syncSetStatus('上传失败：密码不匹配（输入团队密码或超级密码）', true);
+        syncSetStatus('上传失败：密码不匹配（输入当前生效的团队密码或超级密码）。若刚修改过密码，请确认已在「管理员配置」中点过「确认」按钮', true);
         throw new Error('pwd-mismatch');
       });
     }).catch(function (e) {
@@ -3213,7 +3213,7 @@ button { font-family: inherit; }
         if (verifyPwd === (st2.syncPassword || '')) {
           syncSetStatus('下载失败：云端数据仍是修改前的旧密码加密。请先点「上传到云端」用当前团队密码更新云端，再下载即可', true);
         } else {
-          syncSetStatus('下载失败：共享密码不匹配，无法解密云端数据（输入团队密码或超级密码）', true);
+          syncSetStatus('下载失败：共享密码不匹配。请使用「管理员配置」中已确认生效的团队密码或超级密码；若刚修改过密码，请确认已点「确认」按钮', true);
         }
         throw new Error('pwd-mismatch');
       });
@@ -3294,7 +3294,7 @@ button { font-family: inherit; }
         renderCustomerList();
         adminSetStatus('下载成功：合并 ' + customers.length + ' 个客户（新增 ' + added + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
       }, function () {
-        adminSetStatus('下载失败：共享密码不匹配，无法解密云端数据。若刚修改过团队密码，请先点「上传到云端」用当前密码更新云端数据', true);
+        adminSetStatus('下载失败：共享密码不匹配。请使用已确认生效的团队密码；若刚修改过密码但未点「确认」，密码未生效，请先点「确认」后再试', true);
       });
     }).catch(function (e) {
       var m = e && e.message ? e.message : '';
@@ -3357,7 +3357,7 @@ button { font-family: inherit; }
         adminSession = adminSnapshot();
         if (el) { el.textContent = added > 0 ? ('已自动从云端同步 ' + added + ' 个新客户') : '已检测云端数据并比对，无新增客户'; el.className = 'export-hint'; }
       }, function () {
-        if (el) { el.textContent = '自动下载失败：密码不匹配，无法解密云端数据（输入团队密码或超级密码）'; el.className = 'export-hint err'; }
+        if (el) { el.textContent = '自动下载失败：密码不匹配。请使用「管理员配置」中已确认生效的团队密码或超级密码；若刚修改过密码，请确认已点「确认」按钮'; el.className = 'export-hint err'; }
       });
     }, function (e) {
       var m = e && e.message ? e.message : '';
@@ -3366,22 +3366,25 @@ button { font-family: inherit; }
   }
   /* 关闭管理员弹窗后：本次打开期间有改动（客户数据 / 团队密码 / 超级密码）才自动上传 */
   function autoSyncOnClose() {
-    /* 若输入框里填了新密码（两框一致且与已保存不同）但没点「确认」，关闭时一并生效，
-       避免出现「填了新密码、云端却还是旧密码」导致菜单栏同步不匹配 */
+    /* 若输入框里填了新密码（两框一致且与当前生效密码不同）但没点「确认」：提示不生效，
+       自动上传仍使用当前已生效的密码（旧密码），不强制让未确认的新密码生效 */
     var p1 = $('admin-sync-pwd') ? $('admin-sync-pwd').value : '';
     var p2 = $('admin-sync-pwd2') ? $('admin-sync-pwd2').value : '';
     var m1 = $('admin-master-pwd') ? $('admin-master-pwd').value : '';
     var m2 = $('admin-master-pwd2') ? $('admin-master-pwd2').value : '';
     var st0 = loadSettings() || {};
-    var pwdChanged = false;
-    if (p1 && p1 === p2 && p1 !== (st0.syncPassword || '')) { st0.syncPassword = p1; pwdChanged = true; }
-    if (m1 && m1 === m2 && m1 !== (st0.masterPwd || '')) { st0.masterPwd = m1; pwdChanged = true; }
-    if (pwdChanged) { saveSettings(st0); toast('已保存新的团队密码 / 超级密码，正在自动上传…'); }
+    var hints = [];
+    if (p1 && p1 === p2 && p1 !== (st0.syncPassword || '')) hints.push('团队密码');
+    if (m1 && m1 === m2 && m1 !== (st0.masterPwd || '')) hints.push('超级密码');
     var cfg = syncCfg();
     if (!cfg.token || !cfg.pwd) return;                 /* 未配置 Token / 密码：不自动传 */
-    if (!adminChanged()) return;                        /* 无改动：不传 */
+    if (!adminChanged()) {
+      if (hints.length) toast('检测到' + hints.join('、') + '已修改但未点「确认」，未生效；本次无其他改动，未上传。如需更换请点「确认」');
+      return;                                            /* 无改动：不传 */
+    }
     if (!customers.length) return;
-    toast('正在自动上传到云端…');
+    if (hints.length) toast('检测到' + hints.join('、') + '已修改但未点「确认」，未生效；已按当前密码上传。如需更换请点「确认」后再关闭');
+    else toast('正在自动上传到云端…');
     var st = loadSettings() || {};
     var masterPwd = st.masterPwd || '';
     var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
