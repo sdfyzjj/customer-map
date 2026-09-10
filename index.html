@@ -712,16 +712,8 @@ button { font-family: inherit; }
 <!-- ===== 设置弹窗 ===== -->
 <div id="settings-mask" class="mask hidden">
   <div class="modal">
-    <h3>地图设置</h3>
-    <p class="tip">
-      本工具基于高德地图 JS API，需要先申请开发者 Key（免费）。
-      <br>申请地址：<a href="https://console.amap.com" target="_blank" rel="noopener">console.amap.com</a> → 应用管理 → 创建应用 → 添加 Key，服务平台选择「Web端(JS API)」。
-    </p>
-    <label>高德 Key（必填）</label>
-    <input id="set-key" type="text" placeholder="粘贴你的高德 Web端 Key" autocomplete="off">
-    <label>安全密钥 securityJsCode（选填，开启安全密钥功能后填写）</label>
-    <input id="set-security" type="text" placeholder="未开启则留空" autocomplete="off" style="-webkit-text-security: disc">
-    <label style="margin-top:16px">输入地址定位我的位置（最精确，推荐）</label>
+    <h3>设置</h3>
+    <label>输入地址定位我的位置（最精确，推荐）</label>
     <div class="addr-row">
       <input id="addr-input" type="text" placeholder="如：临沂市兰山区白沙埠镇" autocomplete="off">
       <button id="btn-addr-locate" class="btn primary" type="button">定位</button>
@@ -740,14 +732,50 @@ button { font-family: inherit; }
     </div>
     <label style="margin-top:14px">跟进提醒（超过 N 天未拜访的客户显示「未跟进」，0 为关闭）</label>
     <input id="set-remind" type="number" min="0" max="365" placeholder="如：30" autocomplete="off">
-    <hr class="divider">
-    <label style="margin-top:14px">GitHub Token（管理员配置，团队同步上传用）</label>
-    <input id="set-gh-token" type="password" placeholder="GitHub → Settings → Developer settings → Tokens" autocomplete="new-password">
-    <p class="tip" style="margin:6px 0 0">上传客户数据到云端时使用此 Token，仅管理员在设置中配置；普通成员无需填写，在「云端同步」中输入共享密码即可上传 / 下载。</p>
+    <div class="set-row">
+      <button id="btn-admin" class="btn" type="button" title="管理员配置：高德 Key / 安全密钥 / GitHub Token（需管理员密码）">管理员</button>
+    </div>
     <div class="modal-actions">
       <button id="btn-settings-clear" class="btn btn-danger left" type="button">清除全部客户数据</button>
       <button id="btn-settings-cancel" class="btn" type="button">取消</button>
-      <button id="btn-settings-save" class="btn primary" type="button">保存并加载地图</button>
+      <button id="btn-settings-save" class="btn primary" type="button">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 管理员密码验证 / 设置弹窗 ===== -->
+<div id="admin-pwd-mask" class="mask hidden">
+  <div class="modal" style="width:420px; max-width:92vw;">
+    <h3 id="admin-pwd-title">管理员验证</h3>
+    <p class="tip" id="admin-pwd-hint" style="margin:6px 0 0">请输入管理员密码</p>
+    <input id="admin-pwd-input" type="password" placeholder="管理员密码" autocomplete="new-password" style="margin-top:12px">
+    <div class="modal-actions">
+      <button id="btn-admin-pwd-cancel" class="btn" type="button">取消</button>
+      <span style="flex:1"></span>
+      <button id="btn-admin-pwd-ok" class="btn primary" type="button">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 管理员配置弹窗（高德 Key / 安全密钥 / GitHub Token） ===== -->
+<div id="admin-mask" class="mask hidden">
+  <div class="modal" style="width:520px; max-width:92vw;">
+    <h3>管理员配置</h3>
+    <p class="tip">
+      本工具基于高德地图 JS API，需要先申请开发者 Key（免费）。
+      <br>申请地址：<a href="https://console.amap.com" target="_blank" rel="noopener">console.amap.com</a> → 应用管理 → 创建应用 → 添加 Key，服务平台选择「Web端(JS API)」。
+    </p>
+    <label>高德 Key（必填）</label>
+    <input id="admin-key" type="text" placeholder="粘贴你的高德 Web端 Key" autocomplete="off">
+    <label>安全密钥 securityJsCode（选填，开启安全密钥功能后填写）</label>
+    <input id="admin-security" type="text" placeholder="未开启则留空" autocomplete="off" style="-webkit-text-security: disc">
+    <label style="margin-top:14px">GitHub Token（云端同步上传用）</label>
+    <input id="admin-gh-token" type="password" placeholder="GitHub → Settings → Developer settings → Tokens" autocomplete="new-password">
+    <p class="tip" style="margin:6px 0 0">上传客户数据到云端时使用此 Token；普通成员无需填写，在「云端同步」中输入共享密码即可上传 / 下载。</p>
+    <div class="modal-actions">
+      <button id="btn-admin-close" class="btn" type="button">取消</button>
+      <span style="flex:1"></span>
+      <button id="btn-admin-save" class="btn primary" type="button">保存并加载地图</button>
     </div>
   </div>
 </div>
@@ -2560,13 +2588,76 @@ button { font-family: inherit; }
   /* ================= 设置 ================= */
   function openSettings() {
     var s = loadSettings();
-    $('set-key').value = s ? s.key : '';
-    $('set-security').value = s ? (s.securityCode || '') : '';
     $('set-remind').value = (s && s.remindDays) ? s.remindDays : '';
-    $('set-gh-token').value = s ? (s.ghToken || '') : '';
     $('settings-mask').classList.remove('hidden');
   }
   function closeSettings() { $('settings-mask').classList.add('hidden'); }
+
+  /* ================= 管理员（密码验证 → 配置弹窗：高德 Key / 安全密钥 / GitHub Token） ================= */
+  var adminPwdStep = 'check';   /* 'check' 验证 | 'set1' 首次输入 | 'set2' 再次确认 */
+  var adminPwdTmp = '';
+  function openAdminPwd() {
+    var s = loadSettings() || {};
+    if (!s.adminPwd) {
+      adminPwdStep = 'set1'; adminPwdTmp = '';
+      $('admin-pwd-title').textContent = '设置管理员密码';
+      $('admin-pwd-hint').textContent = '首次使用，请设置管理员密码（用于进入管理员配置）';
+    } else {
+      adminPwdStep = 'check';
+      $('admin-pwd-title').textContent = '管理员验证';
+      $('admin-pwd-hint').textContent = '请输入管理员密码';
+    }
+    $('admin-pwd-input').value = '';
+    $('admin-pwd-mask').classList.remove('hidden');
+    setTimeout(function () { $('admin-pwd-input').focus(); }, 50);
+  }
+  function closeAdminPwd() { $('admin-pwd-mask').classList.add('hidden'); }
+  function submitAdminPwd() {
+    var pwd = $('admin-pwd-input').value;
+    if (!pwd) { toast('请输入管理员密码'); return; }
+    var s = loadSettings() || {};
+    if (adminPwdStep === 'check') {
+      if (pwd === s.adminPwd) { closeAdminPwd(); openAdminModal(); }
+      else { toast('管理员密码错误'); $('admin-pwd-input').value = ''; $('admin-pwd-input').focus(); }
+    } else if (adminPwdStep === 'set1') {
+      adminPwdTmp = pwd; adminPwdStep = 'set2';
+      $('admin-pwd-title').textContent = '设置管理员密码';
+      $('admin-pwd-hint').textContent = '请再次输入以确认';
+      $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
+    } else if (adminPwdStep === 'set2') {
+      if (pwd === adminPwdTmp) {
+        s.adminPwd = pwd; saveSettings(s);
+        toast('管理员密码已设置');
+        closeAdminPwd(); openAdminModal();
+      } else {
+        toast('两次输入不一致，请重新设置'); adminPwdStep = 'set1'; adminPwdTmp = '';
+        $('admin-pwd-title').textContent = '设置管理员密码';
+        $('admin-pwd-hint').textContent = '首次使用，请设置管理员密码（用于进入管理员配置）';
+        $('admin-pwd-input').value = ''; $('admin-pwd-input').focus();
+      }
+    }
+  }
+  function openAdminModal() {
+    var s = loadSettings() || {};
+    $('admin-key').value = s.key || '';
+    $('admin-security').value = s.securityCode || '';
+    $('admin-gh-token').value = s.ghToken || '';
+    $('admin-mask').classList.remove('hidden');
+  }
+  function closeAdminModal() { $('admin-mask').classList.add('hidden'); }
+  function saveAdminFromUI() {
+    var key = $('admin-key').value.trim();
+    var sec = $('admin-security').value.trim();
+    var tok = $('admin-gh-token').value;
+    if (!key) { toast('请填写高德 Key'); return; }
+    var cur = loadSettings() || {};
+    saveSettings({ key: key, securityCode: sec, ghToken: tok, clusterEnabled: !!cur.clusterEnabled,
+      remindDays: cur.remindDays || 0, syncPassword: cur.syncPassword || '', adminPwd: cur.adminPwd || '' });
+    closeAdminModal();
+    if (map) { location.reload(); return; }
+    showMapTip('正在加载地图…');
+    loadMap(key, sec);
+  }
 
   /* ================= 云端同步弹窗（菜单栏入口，仅共享密码） ================= */
   function openSyncModal() {
@@ -2839,20 +2930,15 @@ button { font-family: inherit; }
   }
 
   function saveSettingsFromUI() {
-    var key = $('set-key').value.trim();
-    var sec = $('set-security').value.trim();
-    if (!key) { toast('请填写高德 Key'); return; }
     var remindN = parseInt($('set-remind').value, 10);
     if (isNaN(remindN) || remindN < 0) remindN = 0;
     var cur = loadSettings() || {};
-    saveSettings({ key: key, securityCode: sec, clusterEnabled: !!cur.clusterEnabled, remindDays: remindN,
-      ghToken: $('set-gh-token').value, syncPassword: cur.syncPassword || '' });
+    saveSettings({ key: cur.key || '', securityCode: cur.securityCode || '', clusterEnabled: !!cur.clusterEnabled,
+      remindDays: remindN, ghToken: cur.ghToken || '', syncPassword: cur.syncPassword || '',
+      adminPwd: cur.adminPwd || '' });
     closeSettings();
-    if (map) { location.reload(); return; }
-    showMapTip('正在加载地图…');
-    loadMap(key, sec)
-      .then(function () { initMap(); })
-      .catch(function (err) { toast('地图加载失败：' + err.message); openSettings(); });
+    toast('设置已保存');
+    if (map) renderCustomerList();
   }
 
   function importData(file) {
@@ -3567,6 +3653,13 @@ button { font-family: inherit; }
 
     $('btn-settings-cancel').addEventListener('click', closeSettings);
     $('btn-settings-save').addEventListener('click', saveSettingsFromUI);
+    /* 管理员：密码验证 → 配置弹窗 */
+    $('btn-admin').addEventListener('click', openAdminPwd);
+    $('btn-admin-pwd-cancel').addEventListener('click', closeAdminPwd);
+    $('btn-admin-pwd-ok').addEventListener('click', submitAdminPwd);
+    $('admin-pwd-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitAdminPwd(); });
+    $('btn-admin-close').addEventListener('click', closeAdminModal);
+    $('btn-admin-save').addEventListener('click', saveAdminFromUI);
     $('btn-backup').addEventListener('click', backupData);
     $('btn-restore').addEventListener('click', function () { $('restore-file').click(); });
     $('restore-file').addEventListener('change', function (e) { if (e.target.files && e.target.files[0]) restoreData(e.target.files[0]); e.target.value = ''; });
