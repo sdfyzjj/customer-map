@@ -2739,6 +2739,7 @@ button { font-family: inherit; }
   /* 管理员弹窗内：设置 / 修改密码入口（已通过验证进入管理员弹窗后，免旧密码，双框确认生效） */
   function adminPwdEntry() {
     var s = loadSettings() || {};
+    adminCloseSkipUpload = true;   /* 只是切换密码弹窗，不是真正关闭，跳过自动上传 */
     closeAdminModal();
     adminPwdStep = 'new'; adminPwdTmp = '';
     setAdminPwdDual(true);
@@ -2826,9 +2827,18 @@ button { font-family: inherit; }
     $('admin-sync-pwd2').value = s.syncPassword || '';
     $('admin-master-pwd').value = s.masterPwd || '';
     $('admin-master-pwd2').value = s.masterPwd || '';
+    var stEl = $('admin-sync-status');
+    if (stEl) { stEl.textContent = ''; stEl.className = 'export-hint'; }
     $('admin-mask').classList.remove('hidden');
+    /* 自动同步：记录本次打开快照，后台检测云端改动并下载 */
+    adminSession = adminSnapshot();
+    setTimeout(autoSyncOnOpen, 300);
   }
-  function closeAdminModal() { $('admin-mask').classList.add('hidden'); }
+  function closeAdminModal() {
+    $('admin-mask').classList.add('hidden');
+    if (adminCloseSkipUpload) { adminCloseSkipUpload = false; return; }
+    autoSyncOnClose();
+  }
   function saveAdminFromUI() {
     var key = $('admin-key').value.trim();
     var sec = $('admin-security').value.trim();
@@ -3103,7 +3113,10 @@ button { font-family: inherit; }
         var addedN = typeof added !== 'undefined' ? added : 0;
         return encryptForUpload(obj, verifyPwd, encPwd, masterPwd, cloudPayload).then(function (p2) {
           var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
-          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(function () {
+          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(function (up) {
+            var stx = loadSettings() || {};
+            stx.lastCloudSha = (up && up.content && up.content.sha) || (rec ? rec.sha : '');
+            saveSettings(stx);
             syncSetStatus('上传成功：' + (cloudPayload ? '合并 ' + obj.customers.length + ' 个客户' : obj.customers.length + ' 个客户已同步到云端') +
               (addedN && cloudPayload ? '（云端新增 ' + addedN + ' 个）' : '') +
               (encPwd !== verifyPwd ? '（已同步更新钥匙）' : ''));
@@ -3133,7 +3146,10 @@ button { font-family: inherit; }
           /* 改密覆盖：全新重建加密（不依赖旧数据密钥，即使云端被旧密码/他人密码加密也能重置） */
           return encryptDataV3(payloadObj, encPwd, masterPwd).then(function (p2) {
             var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
-            return ghPutFile(cfg, b64, rec.sha).then(function () {
+            return ghPutFile(cfg, b64, rec.sha).then(function (up) {
+              var stx = loadSettings() || {};
+              stx.lastCloudSha = (up && up.content && up.content.sha) || rec.sha;
+              saveSettings(stx);
               syncSetStatus('上传成功：云端数据已用当前团队密码重新加密' + (masterPwd ? '（超级密码仍然可用）' : ''));
             });
           }, function (e2) {
@@ -3187,6 +3203,9 @@ button { font-family: inherit; }
         }
         if (map) renderMarkers();
         renderCustomerList();
+        var stx = loadSettings() || {};
+        stx.lastCloudSha = rec.sha || (stx.lastCloudSha || '');
+        saveSettings(stx);
         syncSetStatus('下载成功：云端 ' + cloudList.length + ' 个客户，本次新增 ' + added + ' 个（本地共 ' + customers.length + ' 个）' + (cloudHash ? '，管理员密码已同步' : ''));
       }, function () {
         /* 解密失败：区分「密码错误」与「改密后云端仍是旧密码」（新密码解不开旧数据） */
@@ -3285,6 +3304,129 @@ button { font-family: inherit; }
   function adminSetStatus(txt, isErr) {
     var el = $('admin-sync-status');
     if (el) { el.textContent = txt; el.className = 'export-hint' + (isErr ? ' err' : ''); }
+  }
+  /* ================= 管理员弹窗自动云端同步（打开检测下载 / 关闭检测上传） ================= */
+  var adminSession = null;          /* 本次打开管理员弹窗时的快照 */
+  var adminCloseSkipUpload = false; /* 切换密码弹窗时跳过自动上传 */
+  function adminSnapshot() {
+    var s = loadSettings() || {};
+    return { custJson: JSON.stringify(customers), syncPwd: s.syncPassword || '', masterPwd: s.masterPwd || '' };
+  }
+  function adminChanged() {
+    if (!adminSession) return true;
+    var now = adminSnapshot();
+    return now.custJson !== adminSession.custJson || now.syncPwd !== adminSession.syncPwd || now.masterPwd !== adminSession.masterPwd;
+  }
+  /* 打开管理员弹窗后：检测云端是否有改动（GitHub sha 对比），有改动才下载合并 */
+  function autoSyncOnOpen() {
+    var st = loadSettings() || {};
+    var cfg = syncCfg();
+    var el = $('admin-sync-status');
+    if (!cfg.token) { if (el) { el.textContent = '未配置 GitHub Token，跳过自动下载'; el.className = 'export-hint'; } return; }
+    if (el) { el.textContent = '正在检测云端是否有新改动…'; el.className = 'export-hint'; }
+    ghGetFile(cfg).then(function (rec) {
+      if (!rec) { if (el) { el.textContent = '云端还没有数据（可点「上传到云端」创建）'; el.className = 'export-hint'; } return; }
+      if (rec.sha === (st.lastCloudSha || '')) {
+        if (el) { el.textContent = '云端无新改动，跳过自动下载'; el.className = 'export-hint'; }
+        return;
+      }
+      var raw = null;
+      try { raw = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {}
+      if (!raw) { if (el) { el.textContent = '自动下载失败：云端数据格式异常'; el.className = 'export-hint err'; } return; }
+      var pwd = st.masterPwd || st.syncPassword || '';
+      if (!pwd) { if (el) { el.textContent = '未设置密码，跳过自动下载'; el.className = 'export-hint'; } return; }
+      return decryptAny(raw, pwd).then(function (cloud) {
+        var cloudList = Array.isArray(cloud) ? cloud : (cloud && Array.isArray(cloud.customers) ? cloud.customers : null);
+        if (!cloudList) { if (el) { el.textContent = '自动下载失败：云端数据格式异常'; el.className = 'export-hint err'; } return; }
+        var merged = customers.slice();
+        var seen = {};
+        merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
+        var added = 0;
+        cloudList.forEach(function (c) {
+          var k = customerDupKey(c);
+          if (!seen[k]) { merged.push(c); seen[k] = true; added++; }
+        });
+        if (added > 0) {
+          customers = merged;
+          saveData();
+          if (map) renderMarkers();
+          renderCustomerList();
+        }
+        var st2 = loadSettings() || {};
+        st2.lastCloudSha = rec.sha; saveSettings(st2);
+        adminSession = adminSnapshot();
+        if (el) { el.textContent = added > 0 ? ('已自动从云端同步 ' + added + ' 个新客户') : '已检测云端数据并比对，无新增客户'; el.className = 'export-hint'; }
+      }, function () {
+        if (el) { el.textContent = '自动下载失败：密码不匹配，无法解密云端数据（输入团队密码或超级密码）'; el.className = 'export-hint err'; }
+      });
+    }, function (e) {
+      var m = e && e.message ? e.message : '';
+      if (el) { el.textContent = '自动下载失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期，请更新' : (m || '网络错误')); el.className = 'export-hint err'; }
+    });
+  }
+  /* 关闭管理员弹窗后：本次打开期间有改动（客户数据 / 团队密码 / 超级密码）才自动上传 */
+  function autoSyncOnClose() {
+    var cfg = syncCfg();
+    if (!cfg.token || !cfg.pwd) return;                 /* 未配置 Token / 密码：不自动传 */
+    if (!adminChanged()) return;                        /* 无改动：不传 */
+    if (!customers.length) return;
+    toast('正在自动上传到云端…');
+    var st = loadSettings() || {};
+    var masterPwd = st.masterPwd || '';
+    var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
+    ghGetFile(cfg).then(function (rec) {
+      var cloudPayload = null;
+      if (rec) { try { cloudPayload = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {} }
+      if (rec && !cloudPayload) { toast('自动上传失败：云端数据格式异常'); return; }
+      var doneUp = function (up) {
+        var st3 = loadSettings() || {};
+        st3.lastCloudSha = (up && up.content && up.content.sha) || (rec ? rec.sha : '');
+        saveSettings(st3);
+        adminSession = adminSnapshot();
+        toast('已自动上传到云端');
+      };
+      var upOne = function (obj) {
+        return encryptForUpload(obj, cfg.pwd, cfg.pwd, masterPwd, cloudPayload).then(function (p2) {
+          var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
+          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(doneUp, function (e) {
+            var m = e && e.message ? e.message : '';
+            toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络或加密错误')));
+          });
+        }, function (e) { toast('自动上传失败：密码或加密错误'); });
+      };
+      if (!cloudPayload) return upOne(payloadObj);
+      return decryptAny(cloudPayload, cfg.pwd).then(function (cloud) {
+        var cloudList = Array.isArray(cloud) ? cloud : (cloud && Array.isArray(cloud.customers) ? cloud.customers : null);
+        if (!cloudList) { toast('自动上传失败：云端数据格式异常'); return; }
+        var merged = customers.slice();
+        var seen = {};
+        merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
+        cloudList.forEach(function (c) {
+          var k = customerDupKey(c);
+          if (!seen[k]) merged.push(c);
+        });
+        payloadObj.customers = merged;
+        return upOne(payloadObj);
+      }, function () {
+        /* 改密后云端仍是旧密码：用当前密码全新重建加密上传（管理员自动完成改密迁移） */
+        return encryptDataV3(payloadObj, cfg.pwd, masterPwd).then(function (p2) {
+          var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
+          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(function (up) {
+            var st3 = loadSettings() || {};
+            st3.lastCloudSha = (up && up.content && up.content.sha) || (rec ? rec.sha : '');
+            saveSettings(st3);
+            adminSession = adminSnapshot();
+            toast('已自动上传到云端（已用当前团队密码重新加密）');
+          }, function (e) {
+            var m = e && e.message ? e.message : '';
+            toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络或加密错误')));
+          });
+        }, function (e) { toast('自动上传失败：加密错误'); });
+      });
+    }, function (e) {
+      var m = e && e.message ? e.message : '';
+      toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络错误')));
+    });
   }
   function restoreTrashItem(id) {
     var t = loadTrash();
