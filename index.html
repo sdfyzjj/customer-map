@@ -1499,7 +1499,7 @@ button { font-family: inherit; }
     var groups = {};
     customers.forEach(function (c) {
       if (typeof c.lng !== 'number' || typeof c.lat !== 'number') return; /* 待定位客户暂不渲染旗标 */
-      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return; /* 状态筛选：地图只显示当前状态的标记 */
+      if (!customerMatchFilter(c)) return; /* 状态筛选 / 搜索 / 成员标签：地图只显示匹配的标记 */
       var key = c.lng.toFixed(6) + ',' + c.lat.toFixed(6);
       (groups[key] = groups[key] || []).push(c);
     });
@@ -1559,7 +1559,7 @@ button { font-family: inherit; }
     var pts = [];
     customers.forEach(function (c) {
       if (typeof c.lng !== 'number' || typeof c.lat !== 'number') return;
-      if (custFilter !== 'all' && customerStatus(c) !== custFilter) return;
+      if (!customerMatchFilter(c)) return;
       pts.push({ lnglat: [c.lng, c.lat], extData: c, weight: 1 });
     });
     if (!pts.length) { updateCount(); updateHeatData(); return; }
@@ -1648,9 +1648,10 @@ button { font-family: inherit; }
 
   function updateCount() {
     /* 地图上只会显示有坐标（已定位）的客户；标题区分「已标记」与「待定位」，
-       避免与地图聚合数量不一致造成困惑 */
-    var located = customers.filter(function (c) { return typeof c.lng === 'number' && typeof c.lat === 'number'; }).length;
-    var pending = customers.length - located;
+       避免与地图聚合数量不一致造成困惑；统计范围随当前搜索 / 状态筛选联动 */
+    var arr = customers.filter(customerMatchFilter);
+    var located = arr.filter(function (c) { return typeof c.lng === 'number' && typeof c.lat === 'number'; }).length;
+    var pending = arr.length - located;
     $('count').textContent = pending > 0
       ? '已标记 ' + located + ' 个客户（' + pending + ' 个待定位）'
       : '已标记 ' + located + ' 个客户';
@@ -1658,10 +1659,13 @@ button { font-family: inherit; }
     renderCustomerList();
   }
 
-  /* 顶部状态统计徽章：已成交（红）/ 有意向（粉）/ 咨询过（绿） */
+  /* 顶部状态统计徽章：已成交（红）/ 有意向（粉）/ 咨询过（绿），随当前搜索 / 状态筛选联动 */
   function updateStats() {
     var counts = { dealed: 0, interested: 0, consulted: 0 };
-    customers.forEach(function (c) { counts[customerStatus(c)]++; });
+    customers.forEach(function (c) {
+      if (!customerMatchFilter(c)) return;
+      counts[customerStatus(c)]++;
+    });
     $('stats').innerHTML = ['dealed', 'interested', 'consulted'].map(function (s) {
       return '<span class="stat st-' + s + '"><i></i>' + STATUS_NAMES[s] + ' <b>' + counts[s] + '</b></span>';
     }).join('');
@@ -1755,6 +1759,23 @@ button { font-family: inherit; }
   }
 
   /* 渲染客户列表（受搜索词与状态筛选约束） */
+  /* 客户过滤（状态筛选 + 搜索关键词/成员标签 叠加生效）：
+     列表、统计、地图标记共用同一口径 */
+  function customerMatchFilter(c) {
+    if (custFilter !== 'all') {
+      if (custFilter === 'noloct') {
+        if (typeof c.lng === 'number' && typeof c.lat === 'number') return false;
+      } else if (customerStatus(c) !== custFilter) return false;
+    }
+    var kw = ($('cust-search').value || '').trim().toLowerCase();
+    if (kw) {
+      var hay = (c.name || '') + ' ' + (c.owner || '') + ' ' +
+        (c.info || []).map(function (it) { return (it.k || '') + (it.v || ''); }).join(' ') + ' ' +
+        (c.tags || []).join(' ');
+      if (hay.toLowerCase().indexOf(kw) === -1) return false;
+    }
+    return true;
+  }
   function renderCustomerList() {
     if (!$('cust-list')) return;
     var kw = ($('cust-search').value || '').trim();
@@ -1773,19 +1794,7 @@ button { font-family: inherit; }
         }
       }
     }
-    kw = kw.toLowerCase();
-    var list = customers.filter(function (c) {
-      if (custFilter !== 'all') {
-        if (custFilter === 'noloct') {
-          /* 待定位：无坐标（未在地图上标记）的客户 */
-          if (typeof c.lng === 'number' && typeof c.lat === 'number') return false;
-        } else if (customerStatus(c) !== custFilter) return false;
-      }
-      if (!kw) return true;
-      var hay = (c.name || '') + ' ' + (c.info || []).map(function (it) { return (it.k || '') + (it.v || ''); }).join(' ') +
-        ' ' + (c.tags || []).join(' ');
-      return hay.toLowerCase().indexOf(kw) !== -1;
-    });
+    var list = customers.filter(customerMatchFilter);
     $('cust-count').textContent = '共 ' + list.length + ' 个';
     if (!list.length) {
       $('cust-list').innerHTML = '<div class="sp-empty">没有匹配的客户</div>';
@@ -3649,28 +3658,23 @@ button { font-family: inherit; }
     $('cust-toggle').addEventListener('click', toggleCustomerPanel);
     $('cp-close').addEventListener('click', closeCustomerPanel);
     /* keydown/paste 才算用户真实输入（浏览器自动填充只触发 input，不会触发这两者） */
-    /* 点击搜索框时清空：防止浏览器自动填充残留（Key/旧词）污染搜索，点击后始终是空白 */
+    /* 点击搜索框时：仅清空浏览器自动填充残留（非用户输入），用户手动输入的标签/关键词保留 */
     $('cust-search').addEventListener('focus', function () {
-      if (this.value) {
+      if (this.value && !searchTouched) {
         this.value = '';
         custFilter = 'all';
         Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
           x.classList.toggle('active', x.getAttribute('data-st') === 'all');
         });
-        renderCustomerList();
+        updateCount();
       }
     });
     $('cust-search').addEventListener('keydown', function () { searchTouched = true; });
     $('cust-search').addEventListener('paste', function () { searchTouched = true; });
     $('cust-search').addEventListener('input', function () {
-      /* 输入搜索词时回到「全部」状态：搜索与状态筛选互斥，避免筛选残留叠加；
-         搜索期间状态按钮不高亮（无颜色），清空搜索后恢复「全部」高亮 */
-      custFilter = 'all';
-      var kw = (this.value || '').trim();
-      Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
-        x.classList.toggle('active', !kw && x.getAttribute('data-st') === 'all');
-      });
-      renderCustomerList();
+      /* 搜索（名称 / 电话 / 备注 / 成员标签）与状态筛选叠加生效：
+         输入关键词不重置当前状态筛选，统计与列表随之联动 */
+      updateCount();
     });
     $('cust-filters').addEventListener('click', function (e) {
       var b = e.target.closest('.cp-f');
@@ -3679,10 +3683,9 @@ button { font-family: inherit; }
       Array.prototype.forEach.call(document.querySelectorAll('.cp-f'), function (x) {
         x.classList.toggle('active', x === b);
       });
-      /* 点击状态筛选：清空搜索词（避免只显示搜索到的个别客户），并同步地图标记 */
-      $('cust-search').value = '';
+      /* 点击状态筛选：保留搜索词（标签搜索与状态筛选叠加），并同步地图标记 */
       infoWindow.close();
-      renderCustomerList();
+      updateCount();
       renderMarkers();
     });
     $('cust-list').addEventListener('click', function (e) {
