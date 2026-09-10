@@ -394,6 +394,9 @@ button { font-family: inherit; }
   width: 100%; height: 38px; border: 1px solid #dcdfe4; border-radius: 8px; padding: 0 12px; font-size: 13px; outline: none;
 }
 .pwd-wrap { position: relative; }
+.pwd-row { display: flex; gap: 8px; align-items: center; }
+.pwd-row .pwd-wrap { flex: 1; min-width: 0; }
+.pwd-row .btn { flex-shrink: 0; }
 .pwd-wrap input[type="text"], .pwd-wrap input[type="password"] { padding-right: 38px; }
 .eye-btn { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 4px 7px; opacity: .5; color: #5c6470; }
 .eye-btn:hover { opacity: 1; }
@@ -786,21 +789,22 @@ button { font-family: inherit; }
 
 <!-- ===== 管理员密码验证 / 设置弹窗 ===== -->
 <div id="admin-pwd-mask" class="mask hidden">
-  <div class="modal" style="width:420px; max-width:92vw;">
+  <div class="modal" style="width:480px; max-width:92vw;">
     <h3 id="admin-pwd-title">管理员验证</h3>
     <p class="tip" id="admin-pwd-hint" style="margin:6px 0 0">请输入管理员密码</p>
-    <div class="pwd-wrap" style="margin-top:12px">
-      <input id="admin-pwd-input" type="password" placeholder="管理员密码" autocomplete="new-password">
-      <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-pwd-input', this)">👁</button>
-    </div>
-    <div class="pwd-wrap hidden" id="admin-pwd-input2-wrap" style="margin-top:10px">
-      <input id="admin-pwd-input2" type="password" placeholder="再次输入确认" autocomplete="new-password">
-      <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-pwd-input2', this)">👁</button>
+    <div class="pwd-row" style="margin-top:12px">
+      <div class="pwd-wrap">
+        <input id="admin-pwd-input" type="password" placeholder="管理员密码" autocomplete="new-password">
+        <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-pwd-input', this)">👁</button>
+      </div>
+      <div class="pwd-wrap hidden" id="admin-pwd-input2-wrap">
+        <input id="admin-pwd-input2" type="password" placeholder="再次输入确认" autocomplete="new-password">
+        <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-pwd-input2', this)">👁</button>
+      </div>
+      <button id="btn-admin-pwd-ok" class="btn primary" type="button">确认</button>
     </div>
     <div class="modal-actions">
       <button id="btn-admin-pwd-cancel" class="btn" type="button">取消</button>
-      <span style="flex:1"></span>
-      <button id="btn-admin-pwd-ok" class="btn primary" type="button">确认</button>
     </div>
   </div>
 </div>
@@ -821,15 +825,15 @@ button { font-family: inherit; }
     <input id="admin-gh-token" type="password" placeholder="GitHub → Settings → Developer settings → Tokens" autocomplete="new-password">
     <p class="tip" style="margin:6px 0 0">上传客户数据到云端时使用此 Token；普通成员无需填写，在「云端同步」中输入共享密码即可上传 / 下载。</p>
     <label style="margin-top:14px">团队密码（云端同步共享密码）</label>
-    <div class="pwd-wrap">
-      <input id="admin-sync-pwd" type="password" placeholder="团队成员在「云端同步」中输入此密码上传 / 下载" autocomplete="new-password">
-      <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-sync-pwd', this)">👁</button>
-    </div>
-    <div class="pwd-wrap" style="margin-top:10px">
-      <input id="admin-sync-pwd2" type="password" placeholder="再次输入团队密码确认" autocomplete="new-password">
-      <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-sync-pwd2', this)">👁</button>
-    </div>
-    <div class="set-row" style="margin-top:10px">
+    <div class="pwd-row">
+      <div class="pwd-wrap">
+        <input id="admin-sync-pwd" type="password" placeholder="团队密码" autocomplete="new-password">
+        <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-sync-pwd', this)">👁</button>
+      </div>
+      <div class="pwd-wrap">
+        <input id="admin-sync-pwd2" type="password" placeholder="确认密码" autocomplete="new-password">
+        <button type="button" class="eye-btn" tabindex="-1" onclick="togglePwd('admin-sync-pwd2', this)">👁</button>
+      </div>
       <button id="btn-sync-pwd-confirm" class="btn" type="button">确认</button>
     </div>
     <p class="tip" style="margin:6px 0 0">由管理员统一设置并告知团队成员；此密码用于加密云端客户数据，不会随数据同步上传，请线下告知成员。修改后点「确认」生效。</p>
@@ -3017,27 +3021,6 @@ button { font-family: inherit; }
     if (masterPwd) return encryptDataV3(obj, encPwd, masterPwd);
     return encryptData(obj, encPwd);
   }
-  /* 改密迁移专用：云端 v3 时用「超级密码优先、否则输入密码」解锁数据密钥 DK，
-     然后两把钥匙都用权威密码（当前团队密码 / 超级密码）重新包装；云端非 v3 直接全新 v3 */
-  function overrideEncryptV3(obj, teamPwd, masterPwd, cloudPayload) {
-    if (!(cloudPayload && cloudPayload.v === 3)) {
-      return encryptDataV3(obj, teamPwd, masterPwd);
-    }
-    var envs = [cloudPayload.dkTeam];
-    if (cloudPayload.dkMaster) envs.push(cloudPayload.dkMaster);
-    return unlockAny(envs, masterPwd || teamPwd).then(function (r) {
-      return sealData(r.dk, obj).then(function (data) {
-        var p2 = { v: 3, data: data };
-        return wrapKey(teamPwd, r.dk).then(function (dkTeam) {
-          p2.dkTeam = dkTeam;
-          if (masterPwd) {
-            return wrapKey(masterPwd, r.dk).then(function (dkMaster) { p2.dkMaster = dkMaster; return p2; });
-          }
-          return p2;
-        });
-      });
-    });
-  }
   /* 客户去重键：姓名 + 电话 + 地址（与导入去重一致） */
   function customerDupKey(c) {
     var tel = '', addr = '';
@@ -3128,7 +3111,8 @@ button { font-family: inherit; }
            用当前密码（优先超级密码解锁）重新加密上传，覆盖云端完成改密迁移 */
         if (verifyPwd === encPwd && cfg.token) {
           syncSetStatus('云端数据与当前密码不匹配（可能是修改团队密码前上传的），正在用当前密码重新加密上传…');
-          return overrideEncryptV3(payloadObj, encPwd, masterPwd, cloudPayload).then(function (p2) {
+          /* 改密覆盖：全新重建加密（不依赖旧数据密钥，即使云端被旧密码/他人密码加密也能重置） */
+          return encryptDataV3(payloadObj, encPwd, masterPwd).then(function (p2) {
             var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
             return ghPutFile(cfg, b64, rec.sha).then(function () {
               syncSetStatus('上传成功：云端数据已用当前团队密码重新加密' + (masterPwd ? '（超级密码仍然可用）' : ''));
@@ -3208,19 +3192,19 @@ button { font-family: inherit; }
       var cloudPayload = null;
       if (rec) { try { cloudPayload = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {} }
       if (rec && !cloudPayload) { adminSetStatus('上传失败：云端数据格式异常', true); throw new Error('pwd-mismatch'); }
-      return encryptForUpload(payloadObj, cfg.pwd, cfg.pwd, masterPwd, cloudPayload).then(function (p2) {
-        var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
-        if (!rec) {
-          return ghPutFile(cfg, b64, null).then(function () {
-            adminSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
-          });
-        }
-        /* 管理员覆盖上传：管理员拥有覆盖权限，直接用本机团队密码 / 超级密码重新加密替换云端
+        /* 管理员覆盖上传：管理员拥有覆盖权限，直接用本机团队密码 / 超级密码全新加密替换云端
            （即使云端被其他密码加密过、无法解密，管理员也能重置云端） */
-        return ghPutFile(cfg, b64, rec.sha).then(function () {
-          adminSetStatus('覆盖上传成功：' + customers.length + ' 个客户已替换云端（已重新加密）');
+        return encryptDataV3(payloadObj, cfg.pwd, masterPwd).then(function (p2) {
+          var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
+          if (!rec) {
+            return ghPutFile(cfg, b64, null).then(function () {
+              adminSetStatus('上传成功：' + customers.length + ' 个客户已同步到云端');
+            });
+          }
+          return ghPutFile(cfg, b64, rec.sha).then(function () {
+            adminSetStatus('覆盖上传成功：' + customers.length + ' 个客户已替换云端（已重新加密）');
+          });
         });
-      });
     }).catch(function (e) {
       if (e && e.message !== 'pwd-mismatch') adminSetStatus('上传失败：' + (e && e.message ? e.message : '网络或配置错误，请检查 Token 是否有效'), true);
     });
