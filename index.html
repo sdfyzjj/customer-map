@@ -1110,15 +1110,18 @@ button { font-family: inherit; }
     setTimeout(guardSearchBox, 500);
     setTimeout(guardSearchBox, 1500);
     setTimeout(guardSearchBox, 3000);
+    /* 内置默认高德 Key / 安全密钥：首次登录零配置，直接显示主地图。
+       用户已配置自己的 Key 则优先使用；未配置时自动写入内置 Key 并加载地图 */
+    var DEFAULT_MAP_KEY = 'ec0a1c68a9e3479694d1edb98c8e5933';
+    var DEFAULT_SECURITY_CODE = 'a6c4e1655c52012af4964fa2b48fd3b2';
     var s = loadSettings();
-    if (s && s.key) {
-      loadMap(s.key, s.securityCode)
-        .then(function () { initMap(); })
-        .catch(function (err) { showMapTip('地图加载失败：' + err.message + '，请检查设置中的 Key'); openSettings(); });
-    } else {
-      showMapTip('尚未配置高德地图 Key，请点击右上角「设置」完成配置');
-      openSettings();
+    if (!s) { s = {}; }
+    if (!s.key) {
+      s.key = DEFAULT_MAP_KEY; s.securityCode = DEFAULT_SECURITY_CODE; saveSettings(s);
     }
+    loadMap(s.key, s.securityCode)
+      .then(function () { initMap(); })
+      .catch(function (err) { showMapTip('地图加载失败：' + err.message + '，请检查设置中的 Key'); openSettings(); });
   }
 
   function loadMap(key, securityCode) {
