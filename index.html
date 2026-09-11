@@ -2816,7 +2816,8 @@ button { font-family: inherit; }
     var s = loadSettings() || {};
     s.syncPassword = p1;
     saveSettings(s);
-    toast('团队密码已更新：到「云端同步」直接输入新密码点「上传到云端」即可，云端将自动改用新密码');
+    toast('团队密码已更新：正在自动上传到云端，新密码即刻生效…');
+    adminAutoUpload();
   }
   /* 管理员弹窗内：超级密码「确认」按钮——两次一致立即生效 */
   function confirmMasterPwd() {
@@ -2832,7 +2833,8 @@ button { font-family: inherit; }
     var s = loadSettings() || {};
     s.masterPwd = p1;
     saveSettings(s);
-    toast('超级密码已更新：云端将升级为双钥匙，输入团队密码或超级密码均可上传 / 下载');
+    toast('超级密码已更新：正在自动上传到云端，新密码即刻生效…');
+    adminAutoUpload();
   }
   function openAdminModal() {
     var s = loadSettings() || {};
@@ -2873,9 +2875,9 @@ button { font-family: inherit; }
       remindDays: cur.remindDays || 0, syncPassword: saveSync, masterPwd: cur.masterPwd || '',
       adminPwd: cur.adminPwd || '', adminPwdHash: cur.adminPwdHash || '' });
     closeAdminModal();
-    /* 团队密码有变更：提示云端数据迁移（直接输入新密码上传即可，自动覆盖迁移） */
+    /* 团队密码有变更：关闭时自动上传完成改密迁移（新密码即刻在云端生效） */
     if (oldSync && saveSync && oldSync !== saveSync) {
-      toast('团队密码已更新：到「云端同步」直接输入新密码点「上传到云端」即可，云端将自动改用新密码');
+      toast('团队密码已更新，正在自动同步到云端…');
     } else {
       toast('管理员配置已保存');
     }
@@ -3371,6 +3373,72 @@ button { font-family: inherit; }
       if (el) { el.textContent = '自动下载失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期，请更新' : (m || '网络错误')); el.className = 'export-hint err'; }
     });
   }
+  /* 管理员自动上传（点「确认」改密后立即调用 / 关闭管理员弹窗有改动时调用）：
+     优先用当前钥匙（团队密码 / 超级密码 / 本次打开前的旧密码）解锁云端 → 合并 → 
+     用当前团队密码 + 超级密码全新重包上传：云端旧数据不丢，改密即刻在云端生效；
+     所有钥匙都解不开（云端被未知密码加密）→ 全新重建覆盖（兜底） */
+  function adminAutoUpload() {
+    var cfg = syncCfg();
+    var st = loadSettings() || {};
+    var masterPwd = st.masterPwd || '';
+    if (!cfg.token || !cfg.pwd) { toast('未配置 GitHub Token 或团队密码，无法自动上传'); return; }
+    if (!customers.length) return;
+    var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
+    ghGetFile(cfg).then(function (rec) {
+      var cloudPayload = null;
+      if (rec) { try { cloudPayload = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {} }
+      if (rec && !cloudPayload) { toast('自动上传失败：云端数据格式异常'); return; }
+      var doneUp = function (up, extra) {
+        var st3 = loadSettings() || {};
+        st3.lastCloudSha = (up && up.content && up.content.sha) || (rec ? rec.sha : '');
+        saveSettings(st3);
+        adminSession = adminSnapshot();
+        toast('新密码已生效并同步到云端' + (extra || ''));
+      };
+      var errUp = function (e) {
+        var m = e && e.message ? e.message : '';
+        toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络或加密错误')));
+      };
+      var putNew = function (obj) {
+        return encryptDataV3(obj, cfg.pwd, masterPwd).then(function (p2) {
+          var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
+          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(function (up) { doneUp(up); }, errUp);
+        }, function () { toast('自动上传失败：加密错误'); });
+      };
+      if (!cloudPayload) return putNew(payloadObj);
+      /* 依次尝试解锁云端：当前团队密码 → 超级密码 → 本次打开前的旧团队/超级密码（改密场景用旧钥匙合并，不丢数据） */
+      var tryKeys = [cfg.pwd];
+      if (masterPwd && tryKeys.indexOf(masterPwd) === -1) tryKeys.push(masterPwd);
+      if (adminSession) {
+        if (adminSession.syncPwd && tryKeys.indexOf(adminSession.syncPwd) === -1) tryKeys.push(adminSession.syncPwd);
+        if (adminSession.masterPwd && tryKeys.indexOf(adminSession.masterPwd) === -1) tryKeys.push(adminSession.masterPwd);
+      }
+      var attempt = function (i) {
+        if (i >= tryKeys.length) {
+          /* 都解不开：全新重建覆盖（云端被未知密码加密时的兜底） */
+          toast('云端数据无法用当前密码解密，正在重建云端…');
+          return putNew(payloadObj);
+        }
+        return decryptAny(cloudPayload, tryKeys[i]).then(function (cloud) {
+          var cloudList = Array.isArray(cloud) ? cloud : (cloud && Array.isArray(cloud.customers) ? cloud.customers : null);
+          if (!cloudList) { toast('自动上传失败：云端数据格式异常'); return; }
+          var merged = customers.slice();
+          var seen = {};
+          merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
+          cloudList.forEach(function (c) {
+            var k = customerDupKey(c);
+            if (!seen[k]) merged.push(c);
+          });
+          payloadObj.customers = merged;
+          return putNew(payloadObj);
+        }, function () { return attempt(i + 1); });
+      };
+      return attempt(0);
+    }, function (e) {
+      var m = e && e.message ? e.message : '';
+      toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络错误')));
+    });
+  }
   /* 关闭管理员弹窗后：本次打开期间有改动（客户数据 / 团队密码 / 超级密码）才自动上传 */
   function autoSyncOnClose() {
     /* 若输入框里填了新密码（两框一致且与当前生效密码不同）但没点「确认」：提示不生效，
@@ -3391,63 +3459,7 @@ button { font-family: inherit; }
     }
     if (!customers.length) return;
     if (hints.length) toast('检测到' + hints.join('、') + '已修改但未点「确认」，未生效；已按当前密码上传。如需更换请点「确认」后再关闭');
-    else toast('正在自动上传到云端…');
-    var st = loadSettings() || {};
-    var masterPwd = st.masterPwd || '';
-    var payloadObj = { v: 2, customers: customers, adminPwdHash: st.adminPwdHash || '' };
-    ghGetFile(cfg).then(function (rec) {
-      var cloudPayload = null;
-      if (rec) { try { cloudPayload = rec._raw ? JSON.parse(rec._raw) : null; } catch (e) {} }
-      if (rec && !cloudPayload) { toast('自动上传失败：云端数据格式异常'); return; }
-      var doneUp = function (up) {
-        var st3 = loadSettings() || {};
-        st3.lastCloudSha = (up && up.content && up.content.sha) || (rec ? rec.sha : '');
-        saveSettings(st3);
-        adminSession = adminSnapshot();
-        toast('已自动上传到云端');
-      };
-      var upOne = function (obj) {
-        return encryptForUpload(obj, cfg.pwd, cfg.pwd, masterPwd, cloudPayload).then(function (p2) {
-          var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
-          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(doneUp, function (e) {
-            var m = e && e.message ? e.message : '';
-            toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络或加密错误')));
-          });
-        }, function (e) { toast('自动上传失败：密码或加密错误'); });
-      };
-      if (!cloudPayload) return upOne(payloadObj);
-      return decryptAny(cloudPayload, cfg.pwd).then(function (cloud) {
-        var cloudList = Array.isArray(cloud) ? cloud : (cloud && Array.isArray(cloud.customers) ? cloud.customers : null);
-        if (!cloudList) { toast('自动上传失败：云端数据格式异常'); return; }
-        var merged = customers.slice();
-        var seen = {};
-        merged.forEach(function (c) { seen[customerDupKey(c)] = true; });
-        cloudList.forEach(function (c) {
-          var k = customerDupKey(c);
-          if (!seen[k]) merged.push(c);
-        });
-        payloadObj.customers = merged;
-        return upOne(payloadObj);
-      }, function () {
-        /* 改密后云端仍是旧密码：用当前密码全新重建加密上传（管理员自动完成改密迁移） */
-        return encryptDataV3(payloadObj, cfg.pwd, masterPwd).then(function (p2) {
-          var b64 = bufToB64(new TextEncoder().encode(JSON.stringify(p2)));
-          return ghPutFile(cfg, b64, rec ? rec.sha : null).then(function (up) {
-            var st3 = loadSettings() || {};
-            st3.lastCloudSha = (up && up.content && up.content.sha) || (rec ? rec.sha : '');
-            saveSettings(st3);
-            adminSession = adminSnapshot();
-            toast('已自动上传到云端（已用当前团队密码重新加密）');
-          }, function (e) {
-            var m = e && e.message ? e.message : '';
-            toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络或加密错误')));
-          });
-        }, function (e) { toast('自动上传失败：加密错误'); });
-      });
-    }, function (e) {
-      var m = e && e.message ? e.message : '';
-      toast('自动上传失败：' + (m.indexOf('Bad credentials') !== -1 || /401|403/.test(m) ? 'Token 无效或已过期' : (m || '网络错误')));
-    });
+    adminAutoUpload();
   }
   function restoreTrashItem(id) {
     var t = loadTrash();
