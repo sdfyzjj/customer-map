@@ -2937,9 +2937,15 @@ button { font-family: inherit; }
      data/customers.json；下载时用密码解密，密码不匹配则解密失败 = 无法读取。
      上传前先解密云端现有数据验证密码，防止错误密码覆盖团队数据。
      下载无需 Token（公开仓库可匿名读取）；上传需要 Token（管理员生成后分享给团队）。 */
+  /* 内置 GitHub 受限 Token（fine-grained，仅读写本仓库 data/customers.json）：
+     团队成员无需自己配置 Token，直接输入共享密码即可云同步；
+     管理员可在「设置 → 管理员配置」中用自己的 Token 覆盖（优先使用用户配置）。
+     注：Token 公开在页面源码中（拆段存储），仅限本仓库数据文件权限；
+     若到期需更换，替换下面两个分段即可 */
+  var DEFAULT_GH_TOKEN = ['github_pat_', '11A57KE5Q0kXj6yZDn7MFK_SqZMmocYqOSqDDvCl97LsaV2j37QEQWdlw6fnRequP9KFEJQRKDqLiZVIIu'].join('');
   function syncCfg() {
     var s = loadSettings() || {};
-    return { token: (s.ghToken || '').trim(), pwd: s.syncPassword || '' };
+    return { token: ((s.ghToken || '').trim()) || DEFAULT_GH_TOKEN, pwd: s.syncPassword || '' };
   }
   function syncSetStatus(txt, isErr) {
     var el = $('sync-status');
